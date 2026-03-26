@@ -230,7 +230,8 @@ Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/Inso
 - **[jedijosh920](https://www.nexusmods.com/marvelsspidermanremastered/mods/51)** — Original SMPCTool (PC)
 - **[Phew](https://github.com/Phew/SMPCTool-src)** — SMPCTool source code
 - **[zerlkung](https://github.com/zerlkung/SMPCTool-PS4)** — SMPCTool-PS4 C# version
-- **[team-waldo](https://github.com/team-waldo/InsomniacArchive)** — Localization format reference
+- **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — InsomniacArchive & SpidermanLocalizationTool (localization DAT1 section IDs, LZ4 asset format, CSV export/import workflow)
+- Hash algorithm reverse-engineered from SMPS4HashTool.exe
 
 ---
 ---
@@ -332,4 +333,5 @@ python3 smps4tool.py repack-dir --archive-dir /game --archive p000115 \
 - **[jedijosh920](https://www.nexusmods.com/marvelsspidermanremastered/mods/51)** — SMPCTool ต้นฉบับ (PC)
 - **[Phew](https://github.com/Phew/SMPCTool-src)** — ซอร์สโค้ด SMPCTool
 - **[zerlkung](https://github.com/zerlkung/SMPCTool-PS4)** — SMPCTool-PS4 เวอร์ชัน C#
-- **[team-waldo](https://github.com/team-waldo/InsomniacArchive)** — อ้างอิง format localization
+- **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — InsomniacArchive & SpidermanLocalizationTool (อ้างอิง section IDs ของ localization DAT1, LZ4 asset format, workflow export/import CSV)
+- Hash algorithm reverse-engineered จาก SMPS4HashTool.exe
