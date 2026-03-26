@@ -409,6 +409,89 @@ class ModManager:
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────────
+
+def repack_archive(toc: TOC, archive_name: str, archive_dir: str,
+                   output_archive: str, output_toc: str,
+                   skip_hex: bool = False, verbose: bool = True) -> dict:
+    """Repack an archive: read all assets → write new archive → update TOC.
+
+    Returns dict with stats. The new archive is a raw concatenation of asset
+    data (same format as the original PS4 archives). The TOC is patched so
+    every affected asset points to the new archive with correct offsets/sizes.
+    """
+    reader = ArchiveReader(archive_dir)
+    assets = toc.by_archive(archive_name)
+    if not assets:
+        raise ValueError(f'No assets found in archive: {archive_name}')
+
+    # Optional: filter out hex-only assets
+    if skip_hex:
+        original_count = len(assets)
+        assets = [a for a in assets if not a.filename.startswith('0x')]
+        skipped = original_count - len(assets)
+        if verbose:
+            print(f'  Skipping {skipped:,} hex-ID assets, repacking {len(assets):,} named assets')
+
+    # Determine archive index for the repacked archive.
+    # Find the original archive index so we can reuse it.
+    orig_idx = assets[0].archive_index if assets else -1
+
+    # Read all asset data and write new archive
+    if verbose:
+        print(f'  Reading {len(assets):,} assets from {archive_name}...')
+
+    os.makedirs(os.path.dirname(output_archive) or '.', exist_ok=True)
+    ok = err = 0
+    with open(output_archive, 'wb') as out:
+        for a in assets:
+            try:
+                data = reader.read_asset(a)
+                new_off = out.tell()
+                out.write(data)
+                # Patch TOC: update offset and size for this asset
+                toc.patch_redirect(a, orig_idx, new_off, len(data))
+                ok += 1
+            except Exception as e:
+                if verbose:
+                    print(f'  ✗ {a.filename}: {e}')
+                err += 1
+
+    archive_size = os.path.getsize(output_archive)
+    if verbose:
+        print(f'  Archive: {output_archive} ({archive_size:,} bytes)')
+        print(f'  Assets:  {ok:,} repacked, {err:,} errors')
+
+    # Save updated TOC
+    toc.save(output_toc)
+
+    stats = {
+        'archive': output_archive, 'archive_size': archive_size,
+        'toc': output_toc, 'assets_total': len(assets),
+        'assets_ok': ok, 'assets_err': err,
+        'skipped_hex': skipped if skip_hex else 0,
+    }
+    return stats
+
+
+def cmd_repack(args):
+    toc = _auto_toc(args)
+    archive_name = args.archive
+    out_archive = getattr(args, 'output_archive', None) or archive_name
+    out_toc = getattr(args, 'output_toc', None) or 'toc.new'
+    skip_hex = getattr(args, 'skip_hex', False)
+
+    print(f'\n=== Repack: {archive_name} ===')
+    stats = repack_archive(
+        toc, archive_name, args.archive_dir,
+        out_archive, out_toc,
+        skip_hex=skip_hex, verbose=True
+    )
+    print(f'\n  Done. New TOC: {stats["toc"]}')
+    if skip_hex and stats['skipped_hex']:
+        print(f'  Note: {stats["skipped_hex"]:,} hex-ID assets were excluded.')
+        print(f'  The new archive only contains named assets.')
+
+
 def _auto_toc(args) -> TOC:
     hashdb = getattr(args,'hashdb',None)
     if not hashdb or not os.path.exists(hashdb):
@@ -463,8 +546,11 @@ def cmd_extract(args):
     elif getattr(args,'search',None):  assets = toc.search(args.search)
     else: print('Need --name/--id/--archive/--search'); return
     if not assets: print('No assets found.'); return
-    ok = err = 0
+    skip_hex = getattr(args,'skip_hex',False)
+    ok = err = skipped = 0
     for a in assets:
+        if skip_hex and a.filename.startswith('0x'):
+            skipped += 1; continue
         try:
             data = reader.read_asset(a)
             if getattr(args,'flat',False) or '\\' not in a.filename:
@@ -479,7 +565,8 @@ def cmd_extract(args):
             ok += 1
         except Exception as e:
             print(f'  ✗ {a.filename}: {e}'); err += 1
-    print(f'\n  Extracted: {ok}  Errors: {err}')
+    print(f'\n  Extracted: {ok}  Errors: {err}' +
+          (f'  Skipped (hex): {skipped}' if skipped else ''))
 
 def cmd_csv(args):
     toc = _auto_toc(args)
@@ -546,6 +633,14 @@ def main():
     s.add_argument('--archive'); s.add_argument('--name')
     s.add_argument('--id'); s.add_argument('--search')
     s.add_argument('--flat', action='store_true', help='No subdirs in output')
+    s.add_argument('--skip-hex', action='store_true', help='Skip assets with hex ID (no name)')
+
+    s = sub.add_parser('repack', help='Repack archive → new archive + new TOC')
+    s.add_argument('--archive-dir', required=True)
+    s.add_argument('--archive', required=True)
+    s.add_argument('--output-archive', default=None, help='Output archive path (default: same name)')
+    s.add_argument('--output-toc', default='toc.new', help='Output TOC path (default: toc.new)')
+    s.add_argument('--skip-hex', action='store_true', help='Exclude hex-ID assets from repack')
 
     s = sub.add_parser('csv', help='Export asset list to CSV')
     s.add_argument('--output', default='assets.csv')
@@ -575,6 +670,7 @@ def main():
         'list': cmd_list, 'extract': cmd_extract, 'csv': cmd_csv,
         'hash': cmd_hash, 'dag': cmd_dag, 'create-mod': cmd_create_mod,
         'install-mod': cmd_install, 'uninstall': cmd_uninstall,
+        'repack': cmd_repack,
     }
     if args.cmd not in cmds: p.print_help(); return
     cmds[args.cmd](args)
