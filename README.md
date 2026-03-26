@@ -60,7 +60,21 @@ python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/
 python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --skip-hex
 ```
 
-Localization files with duplicate names (e.g. `localization_all.localization` × 32 languages) are automatically suffixed with their language code: `.ja`, `.en-US`, `.fr`, `.de`, `.th`, etc.
+**Localization language detection**: When extracting archives with duplicate filenames (e.g. `localization_all.localization` × 32 languages), the tool automatically detects the actual language from file content using the `TEST_ALL_LANG` key inside each file, and appends the correct suffix:
+
+```
+localization_all.localization.en-US     ← English (US)
+localization_all.localization.ja        ← Japanese
+localization_all.localization.fr        ← French
+localization_all.localization.de        ← German
+localization_all.localization.zh-Hant   ← Chinese Traditional
+localization_all.localization.ko        ← Korean
+localization_all.localization.es-LA     ← Spanish (Latin America)
+localization_all.localization.pt-BR     ← Portuguese (Brazil)
+...
+```
+
+All 32 language variants are correctly identified, including distinguishing between regional variants (en-US/en-GB, fr/fr-CA, es/es-LA, pt/pt-BR).
 
 ### `repack` — Rebuild archive from original
 ```bash
@@ -78,7 +92,7 @@ python3 smps4tool.py repack-dir --archive-dir /game --archive p000045 \
     --dir extracted/ --output-archive p000045_new --output-toc toc.new --flat
 ```
 
-Files not found in the directory are read from the original archive. Language suffixes on localization files are stripped automatically.
+Files not found in the directory are read from the original archive. Language suffixes on localization files are stripped automatically during repack.
 
 ### `loc-export` — Export localization → CSV
 ```bash
@@ -90,25 +104,19 @@ Output CSV has 3 columns: `key`, `source`, `translation`. Open in Excel or Googl
 
 ### `loc-import` — Import translated CSV → localization file
 ```bash
-python3 smps4tool.py loc-import original.localization.en-US translated.csv output.localization
+python3 smps4tool.py loc-import original.localization translated.csv output.localization
 ```
 
 Only rows with a non-empty `translation` column are imported. All other strings keep their original values.
 
-### `csv` — Export full asset list
-```bash
-python3 smps4tool.py csv --output assets.csv
-```
+### Other commands
 
-### `hash` — Compute CRC-64 hash
-```bash
-python3 smps4tool.py hash "textures\glass\jn_shattered_glass\jn_shattered_glass_c.texture"
-```
-
-### `dag` — Search DAG names
-```bash
-python3 smps4tool.py dag --dag dag --search "scarlet"
-```
+| Command | Description |
+|---|---|
+| `build-hashdb` | Build hash DB from dag (run once) |
+| `csv` | Export full asset list to CSV |
+| `hash` | Compute CRC-64 hash for a path string |
+| `dag` | Search DAG asset names |
 
 ---
 
@@ -120,12 +128,12 @@ Full workflow to translate the game into another language:
 # 1. Extract localization files from archive
 python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/ --flat
 
-# 2. Export English strings to CSV
+# 2. Export English strings to CSV (54,010 strings)
 python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
 # 3. Translate: fill in the "translation" column in strings.csv
 
-# 4. Import translations back
+# 4. Import translations back into the English localization file
 python3 smps4tool.py loc-import \
     loc/localization_localization_all.localization.en-US \
     strings.csv \
@@ -184,11 +192,26 @@ Archive format: Raw concat   (PC uses RDPA + custom LZ)
 Asset format:   LZ4 header (0x24 bytes) + compressed DAT1 content
 ```
 
+### Localization format
+
+Each `.localization` asset is LZ4-compressed DAT1 containing:
+
+| Section ID | Type | Contents |
+|---|---|---|
+| `0x4D73CEBD` | String data | Key strings (asset path keys) |
+| `0xA4EA55B2` | int[] | Key offsets |
+| `0x70A382B8` | String data | Translation strings |
+| `0xF80DEEB4` | int[] | Translation offsets |
+
+Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/InsomniacArchive) format. Works with both PS4 and PC localization files (same LZ4+DAT1 structure).
+
 ---
 
-## Bugfixes from Original v2
+## Bugfixes
 
-**Archive name truncation** — Original read archive names as fixed 8 bytes. Archives with longer names (`a00s019.us`, `a00s020.fr`, etc.) were truncated and could not be found. Fixed by reading null-terminated strings instead.
+**Archive name truncation** — Original read archive names as fixed 8 bytes. Archives with longer names (`a00s019.us`, `a00s020.fr`, etc.) were truncated and could not be found. Fixed by reading null-terminated strings.
+
+**Language detection** — Originally used PS4 system language index which did not match the actual language order in game archives. Now detects language from file content using the `TEST_ALL_LANG` key inside each localization asset. Verified 32/32 files correctly identified.
 
 ---
 
@@ -208,7 +231,6 @@ Asset format:   LZ4 header (0x24 bytes) + compressed DAT1 content
 - **[Phew](https://github.com/Phew/SMPCTool-src)** — SMPCTool source code
 - **[zerlkung](https://github.com/zerlkung/SMPCTool-PS4)** — SMPCTool-PS4 C# version
 - **[team-waldo](https://github.com/team-waldo/InsomniacArchive)** — Localization format reference
-- Hash algorithm reverse-engineered from SMPS4HashTool.exe
 
 ---
 ---
@@ -244,12 +266,33 @@ python3 smps4tool.py info                       # ตรวจสอบ
 | `list` | ค้นหา asset (`--search`, `--archive`, `--named-only`) |
 | `extract` | Extract asset (`--skip-hex`, `--flat`) |
 | `repack` | สร้าง archive ใหม่จาก original (`--skip-hex`) |
-| `repack-dir` | สร้าง archive ใหม่จาก directory ที่ extract ออกมา (`--flat`) |
+| `repack-dir` | สร้าง archive ใหม่จาก directory (`--flat`) |
+| `loc-export` | แปลง localization → CSV สำหรับแปลภาษา |
+| `loc-import` | นำเข้า CSV ที่แปลแล้ว → localization ใหม่ |
 | `csv` | Export รายการ asset ทั้งหมดเป็น CSV |
 | `hash` | คำนวณ CRC-64 hash |
 | `dag` | ค้นหาชื่อ asset จาก dag |
-| `loc-export` | แปลง localization → CSV สำหรับแปลภาษา |
-| `loc-import` | นำเข้า CSV ที่แปลแล้ว → localization ใหม่ |
+
+---
+
+### ตรวจจับภาษาอัตโนมัติ
+
+เมื่อ extract ไฟล์ localization ที่ชื่อซ้ำกัน (32 ภาษา) tool จะตรวจจับภาษาจริงจากเนื้อหาไฟล์โดยอ่าน key `TEST_ALL_LANG` ที่อยู่ภายใน แล้วตั้งชื่อ suffix ให้ถูกต้อง:
+
+```
+localization_all.localization.en-US     ← English (US)
+localization_all.localization.en-GB     ← English (UK)
+localization_all.localization.ja        ← Japanese
+localization_all.localization.fr        ← French
+localization_all.localization.fr-CA     ← French (Canada)
+localization_all.localization.es        ← Spanish
+localization_all.localization.es-LA     ← Spanish (Latin America)
+localization_all.localization.pt        ← Portuguese
+localization_all.localization.pt-BR     ← Portuguese (Brazil)
+...
+```
+
+ทดสอบแล้ว 32/32 ไฟล์ถูกต้อง รวมถึงแยก regional variants ได้ (en-US/en-GB, fr/fr-CA, es/es-LA, pt/pt-BR)
 
 ---
 
@@ -277,39 +320,10 @@ python3 smps4tool.py repack-dir --archive-dir /game --archive p000115 \
 
 ---
 
-### Extract — ตัวเลือกพิเศษ
+### Bugfixes
 
-```bash
-# ข้ามไฟล์ hex ID (extract เฉพาะไฟล์ที่มีชื่อ)
-python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --skip-hex
-
-# Flat (ไม่สร้างโฟลเดอร์ย่อย)
-python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --flat
-```
-
-ไฟล์ localization ที่ชื่อซ้ำกัน (32 ภาษา) จะได้ suffix อัตโนมัติ: `.ja`, `.en-US`, `.fr`, `.de`, `.th`, ฯลฯ
-
----
-
-### Repack — สร้าง archive ใหม่
-
-```bash
-# จาก original archive
-python3 smps4tool.py repack --archive-dir /game --archive p000045 \
-    --output-archive p000045_new --output-toc toc.new
-
-# จาก directory ที่ extract/แก้ไขแล้ว
-python3 smps4tool.py repack-dir --archive-dir /game --archive p000045 \
-    --dir extracted/ --output-archive p000045_new --output-toc toc.new --flat
-```
-
-> Repack สร้างทั้ง archive ใหม่และ TOC ใหม่ เพราะ offset เปลี่ยนหมดเมื่อ repack
-
----
-
-### Bugfix จาก Original
-
-**Archive name truncation** — ชื่อ archive ที่ยาวกว่า 8 ตัวอักษร (เช่น `a00s019.us`) ถูกตัด → แก้แล้ว
+- **Archive name truncation** — ชื่อ archive ที่ยาวกว่า 8 ตัวอักษร (เช่น `a00s019.us`) ถูกตัด → แก้แล้ว
+- **Language detection** — เดิมใช้ PS4 system language index ซึ่งไม่ตรงกับลำดับจริง → แก้เป็นตรวจจับจากเนื้อหาไฟล์ด้วย `TEST_ALL_LANG` key ทดสอบ 32/32 ถูกต้อง
 
 ---
 
