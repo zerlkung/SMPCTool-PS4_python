@@ -3,14 +3,15 @@
 SMPS4Tool - Spider-Man PS4 Asset Tool
 Python port of SMPCTool adapted for PS4 file format.
 
+Setup:      pip install lz4  (required for loc-export/loc-import)
 First run:  python3 smps4tool.py build-hashdb --dag dag
 Then:       python3 smps4tool.py info
             python3 smps4tool.py list --search spider-man
             python3 smps4tool.py extract --archive-dir /game --archive g00s000
+            python3 smps4tool.py loc-export localization.en-US output.csv
 """
 
-import struct, zlib, os, sys, csv, shutil, zipfile
-from pathlib import Path
+import struct, zlib, os, sys, csv, re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -146,7 +147,6 @@ def _strip_lang_suffix(filename):
         if filename.endswith(f'.{lang}'):
             return filename[:-(len(lang)+1)]
     # Also handle fallback 'lang##' suffixes
-    import re
     m = re.match(r'^(.+)\.lang\d+$', filename)
     if m:
         return m.group(1)
@@ -382,71 +382,6 @@ class ArchiveReader:
 
 
 # ─── Mod Manager ─────────────────────────────────────────────────────────────
-class ModManager:
-    def __init__(self, toc: TOC, archive_dir: str):
-        self.toc = toc; self.reader = ArchiveReader(archive_dir)
-        self._queue: list[tuple] = []
-
-    def queue(self, id_or_name, repl_file: str) -> bool:
-        if isinstance(id_or_name, int): asset = self.toc.get_by_id(id_or_name)
-        elif str(id_or_name).startswith(('0x','0X')): asset = self.toc.get_by_id(int(id_or_name,16))
-        else: asset = self.toc.get_by_name(str(id_or_name))
-        if not asset: print(f'ERROR: not found: {id_or_name}'); return False
-        if not os.path.exists(repl_file): print(f'ERROR: file missing: {repl_file}'); return False
-        self._queue.append((asset, repl_file)); print(f'Queued: {asset.filename}'); return True
-
-    def create_mod(self, title: str, author: str='', description: str='',
-                   output: Optional[str]=None) -> str:
-        if not self._queue: raise ValueError('Nothing queued')
-        fname = (output or title.replace(' ','_')) + '.smpcmod'
-        with zipfile.ZipFile(fname,'w',zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr('SMPCMod.info', f'Title={title}\nAuthor={author}\nDescription={description}\n')
-            for asset,repl in self._queue:
-                zf.write(repl, f'ModFiles/{asset.archive_index}_{asset.asset_id:016X}')
-                print(f'  + {asset.filename}')
-        print(f'Created: {fname}'); self._queue.clear(); return fname
-
-    def install_mod(self, smpcmod_path: str, backup: bool=True) -> None:
-        import tempfile
-        if backup:
-            bak = self.toc.toc_path + '.BAK'
-            if not os.path.exists(bak):
-                shutil.copy2(self.toc.toc_path, bak); print(f'Backup: {bak}')
-        with tempfile.TemporaryDirectory() as tmp:
-            with zipfile.ZipFile(smpcmod_path) as zf: zf.extractall(tmp)
-            meta = {}
-            with open(os.path.join(tmp,'SMPCMod.info')) as f:
-                for line in f:
-                    if '=' in line: k,v = line.strip().split('=',1); meta[k]=v
-            print(f'Installing: {meta.get("Title","?")} by {meta.get("Author","?")}')
-            mfd = os.path.join(tmp,'ModFiles'); entries = []
-            for fname in os.listdir(mfd):
-                parts = fname.split('_',1)
-                if len(parts)==2: entries.append((int(parts[0]),int(parts[1],16),os.path.join(mfd,fname)))
-            arch_dir = self.reader.archive_dir
-            mod_name = f'mods/mod_{Path(smpcmod_path).stem}'
-            mod_path = os.path.join(arch_dir, mod_name)
-            os.makedirs(os.path.dirname(mod_path), exist_ok=True)
-            new_idx = len(self.toc.archive_files); offsets = {}
-            with open(mod_path,'wb') as out:
-                for orig_idx,ah,fpath in entries:
-                    off = out.tell(); data = open(fpath,'rb').read()
-                    out.write(data); offsets[(orig_idx,ah)] = (off,len(data))
-            for orig_idx,ah,_ in entries:
-                asset = None
-                for a in self.toc.assets:
-                    if a.asset_id==ah and a.archive_index==orig_idx: asset=a; break
-                if not asset: asset = self.toc.get_by_id(ah)
-                if not asset: print(f'  SKIP: 0x{ah:016X}'); continue
-                new_off,new_sz = offsets[(orig_idx,ah)]
-                self.toc.patch_redirect(asset,new_idx,new_off,new_sz)
-                print(f'  Patched: {asset.filename}')
-            self.toc.save(); print('Done.')
-
-    def uninstall(self) -> None:
-        bak = self.toc.toc_path + '.BAK'
-        if not os.path.exists(bak): print('No backup.'); return
-        shutil.copy2(bak, self.toc.toc_path); print(f'Restored from {bak}')
 
 
 # ─── Localization ─────────────────────────────────────────────────────────────
@@ -898,17 +833,6 @@ def cmd_dag(args):
         out = getattr(args,'output','PS4AssetHashes.txt')
         build_hash_db_from_dag(dag_path, output_path=out, verbose=True)
 
-def cmd_create_mod(args):
-    toc = _auto_toc(args); mm = ModManager(toc, args.archive_dir)
-    for idn,repl in zip(args.assets, args.files): mm.queue(idn, repl)
-    if mm._queue: mm.create_mod(args.title, getattr(args,'author',''), getattr(args,'description',''), getattr(args,'output',None))
-
-def cmd_install(args):
-    toc = _auto_toc(args); mm = ModManager(toc, args.archive_dir)
-    mm.install_mod(args.mod, backup=not getattr(args,'no_backup',False))
-
-def cmd_uninstall(args):
-    toc = TOC(args.toc); ModManager(toc, '.').uninstall()
 
 def cmd_loc_export(args):
     loc_export(args.input, args.output)
@@ -967,18 +891,6 @@ def main():
     s.add_argument('--dag', default='dag')
     s.add_argument('--search'); s.add_argument('--output', default='PS4AssetHashes.txt')
 
-    s = sub.add_parser('create-mod', help='Create .smpcmod')
-    s.add_argument('--archive-dir',required=True); s.add_argument('--title',required=True)
-    s.add_argument('--author', default=''); s.add_argument('--description', default='')
-    s.add_argument('--assets',nargs='+',required=True); s.add_argument('--files',nargs='+',required=True)
-    s.add_argument('--output',default=None)
-
-    s = sub.add_parser('install-mod', help='Install .smpcmod')
-    s.add_argument('--archive-dir',required=True); s.add_argument('mod')
-    s.add_argument('--no-backup', action='store_true')
-
-    sub.add_parser('uninstall', help='Restore TOC from .BAK')
-
     s = sub.add_parser('loc-export', help='Export localization asset → CSV')
     s.add_argument('input', help='Localization file path (extracted .localization asset)')
     s.add_argument('output', help='Output CSV path')
@@ -992,8 +904,7 @@ def main():
     cmds = {
         'build-hashdb': cmd_build_hashdb, 'info': cmd_info,
         'list': cmd_list, 'extract': cmd_extract, 'csv': cmd_csv,
-        'hash': cmd_hash, 'dag': cmd_dag, 'create-mod': cmd_create_mod,
-        'install-mod': cmd_install, 'uninstall': cmd_uninstall,
+        'hash': cmd_hash, 'dag': cmd_dag,
         'repack': cmd_repack, 'repack-dir': cmd_repack_dir,
         'loc-export': cmd_loc_export, 'loc-import': cmd_loc_import,
     }
