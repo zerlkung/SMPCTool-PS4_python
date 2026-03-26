@@ -112,22 +112,91 @@ DAG_MAGIC  = 0x891F77AF
 DAT1_MAGIC = 0x44415431
 ARCH_STRIDE = 24   # PS4: 24 bytes (PC: 72 bytes)
 
-# PS4 system language index → language tag
-# Used to disambiguate duplicate localization filenames during extract.
-PS4_LANG = [
-    'ja','en-US','fr','es','de','it','nl','pt','ru','ko',
-    'zh-Hant','zh-Hans','fi','sv','da','no','pl','pt-BR','en-GB','tr',
-    'es-LA','ar','fr-CA','cs','hu','el','ro','th','vi','id','hi','und',
+# Language detection for localization files.
+# Maps known translation of 'ABANDON_CONFIRM_HEADER' → language code.
+# Used to auto-detect language when extracting duplicate localization files.
+_LANG_DETECT_KEY = 'ABANDON_CONFIRM_HEADER'
+_LANG_SIGNATURES = {
+    'ARE YOU SURE?':        'en',
+    'ÊTES-VOUS SÛR(E)\u00a0?': 'fr', 'ES-TU SÛR ?': 'fr', 'ÊTES-VOUS SÛR ?': 'fr',
+    '¿SEGURO?':             'es',
+    'BIST DU SICHER?':      'de',
+    'SEI SICURO?':          'it', 'SICURO?': 'it',
+    'WEET JE HET ZEKER?':   'nl',
+    'TEM CERTEZA?':         'pt',
+    'ВЫ УВЕРЕНЫ?':          'ru',
+    '확실합니까?':              'ko',
+    '你確定嗎？':              'zh-Hant',
+    '确定吗？':               'zh-Hans',
+    'OLETKO VARMA?':        'fi',
+    'ÄR DU SÄKER?':         'sv',
+    'ER DU SIKKER?':        'da',  # same as Norwegian but ok
+    'NA PEWNO?':            'pl',
+    'JSTE SI JISTÍ?':       'cs',
+    'ΣΙΓΟΥΡΑ;':             'el', 'ΕΊΣΤΕ ΣΊΓΟΥΡΟΙ;': 'el',
+    'EMİN MİSİN?':         'tr',
+    'هل أنت متأكد؟':        'ar',
+    'SIGUR?':               'ro', 'EȘTI SIGUR?': 'ro',
+    'よろしいですか？':         'ja',
+    'BIZTOS VAGY BENNE?':   'hu', 'BIZTOS?': 'hu',
+    'ER DU SIKKER PÅ DET?': 'no',
+    'BẠN CÓ CHẮC KHÔNG?':  'vi',
+}
+# All known language codes used in suffixes
+_ALL_LANG_CODES = [
+    'ja','en','en-US','en-GB','fr','fr-CA','es','es-LA','de','it','nl','pt','pt-BR',
+    'ru','ko','zh-Hant','zh-Hans','fi','sv','da','no','pl','cs','el','tr','ar',
+    'ro','hu','vi','id','hi','th','und',
 ]
 
-def _lang_suffix_for(asset, all_assets):
-    """Return a language suffix like '.en-US' for localization duplicates.
+def _detect_loc_language(data: bytes) -> str:
+    """Detect language from raw localization asset bytes (LZ4+DAT1)."""
+    try:
+        import lz4.block
+        rawsize = struct.unpack('<I', data[4:8])[0]
+        dec = lz4.block.decompress(data[0x24:], uncompressed_size=rawsize)
 
-    When multiple assets share the same filename (e.g. localization_all.localization
-    appears 32 times, one per language), we detect this and assign a suffix based
-    on the asset's position among its duplicates, mapped to PS4_LANG.
+        nsec = struct.unpack('<I', dec[12:16])[0]
+        sections = {}
+        pos = 16
+        for _ in range(nsec):
+            h, off, sz = struct.unpack('<III', dec[pos:pos+12])
+            sections[h] = (off, sz)
+            pos += 12
+
+        kd_off, _ = sections.get(0x4D73CEBD, (0,0))
+        ko_off, ko_sz = sections.get(0xA4EA55B2, (0,0))
+        td_off, _ = sections.get(0x70A382B8, (0,0))
+        to_off, _ = sections.get(0xF80DEEB4, (0,0))
+        if ko_sz == 0: return 'und'
+
+        count = ko_sz // 4
+        for i in range(min(count, 500)):  # scan first 500 entries max
+            ko = struct.unpack('<i', dec[ko_off+i*4:ko_off+i*4+4])[0]
+            to = struct.unpack('<i', dec[to_off+i*4:to_off+i*4+4])[0]
+            kpos = kd_off + ko
+            kend = dec.index(b'\x00', kpos)
+            key = dec[kpos:kend].decode('utf-8','replace')
+            if key == _LANG_DETECT_KEY and to != 0:
+                tpos = td_off + to
+                tend = dec.index(b'\x00', tpos)
+                val = dec[tpos:tend].decode('utf-8','replace')
+                return _LANG_SIGNATURES.get(val, 'und')
+    except Exception:
+        pass
+    return 'und'
+
+# Cache: asset_id+offset → detected lang
+_lang_cache: dict[tuple, str] = {}
+
+def _lang_suffix_for(asset, all_assets, reader=None):
+    """Return a language suffix like '.en' for localization duplicates.
+
+    Detects actual language from file content (LZ4+DAT1) instead of
+    relying on archive position. Requires an ArchiveReader to read data.
 
     Returns '' for non-duplicate filenames.
+    Falls back to '.lang{N}' if reader is unavailable or detection fails.
     """
     if asset.filename.startswith('0x'):
         return ''
@@ -136,18 +205,40 @@ def _lang_suffix_for(asset, all_assets):
     if len(dupes) <= 1:
         return ''
     idx = dupes.index(asset)
-    lang = PS4_LANG[idx] if idx < len(PS4_LANG) else f'lang{idx}'
-    return f'.{lang}'
+
+    if reader is not None:
+        cache_key = (asset.asset_id, asset.archive_offset)
+        if cache_key not in _lang_cache:
+            try:
+                data = reader.read_asset(asset)
+                _lang_cache[cache_key] = _detect_loc_language(data)
+            except Exception:
+                _lang_cache[cache_key] = f'lang{idx}'
+        lang = _lang_cache[cache_key]
+        # Handle duplicate detected codes (e.g. multiple 'en' for en-US/en-GB)
+        # by appending index if collision
+        used = []
+        for j, d in enumerate(dupes):
+            if j == idx:
+                break
+            dk = (d.asset_id, d.archive_offset)
+            if dk in _lang_cache and _lang_cache[dk] == lang:
+                used.append(j)
+        if used:
+            lang = f'{lang}_{len(used)+1}'
+        return f'.{lang}'
+    else:
+        return f'.lang{idx}'
 
 def _strip_lang_suffix(filename):
     """Remove a language suffix added by extract, e.g.
-    'localization_all.localization.en-US' → 'localization_all.localization'
+    'localization_all.localization.en' → 'localization_all.localization'
     """
-    for lang in PS4_LANG:
+    for lang in _ALL_LANG_CODES:
         if filename.endswith(f'.{lang}'):
             return filename[:-(len(lang)+1)]
-    # Also handle fallback 'lang##' suffixes
-    m = re.match(r'^(.+)\.lang\d+$', filename)
+    # Handle collision suffixes like .en_2 and fallback .lang##
+    m = re.match(r'^(.+)\.(?:[a-z]{2}(?:-[A-Za-z]+)?_\d+|lang\d+)$', filename)
     if m:
         return m.group(1)
     return filename
@@ -680,7 +771,7 @@ def cmd_repack_dir(args):
     with open(out_archive, 'wb') as out:
         for a in assets:
             try:
-                lang = _lang_suffix_for(a, assets)
+                lang = _lang_suffix_for(a, assets, reader=reader)
                 data = None
 
                 # Try to find a replacement file in the extract directory
@@ -787,7 +878,7 @@ def cmd_extract(args):
             skipped += 1; continue
         try:
             data = reader.read_asset(a)
-            lang = _lang_suffix_for(a, assets)
+            lang = _lang_suffix_for(a, assets, reader=reader)
             if getattr(args,'flat',False) or '\\' not in a.filename:
                 safe = a.filename.replace('\\','_').replace('/','_') + lang
                 out_path = os.path.join(args.output, safe)
