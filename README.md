@@ -207,6 +207,11 @@ Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/Inso
 
 ---
 
+## EN Font Location
+0xB1BC4746124FA7ED in p000026 Archive! GFX format.
+
+---
+
 ## Bugfixes
 
 **Archive name truncation** — Original read archive names as fixed 8 bytes. Archives with longer names (`a00s019.us`, `a00s020.fr`, etc.) were truncated and could not be found. Fixed by reading null-terminated strings.
