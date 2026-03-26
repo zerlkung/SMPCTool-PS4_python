@@ -995,6 +995,85 @@ def cmd_loc_export(args):
 def cmd_loc_import(args):
     loc_import(args.input, args.csv, args.output)
 
+def cmd_patch(args):
+    """Create a small mod archive with only modified files + patch TOC to point to it.
+
+    Instead of repacking the entire archive, this:
+    1. Creates a new small archive containing ONLY the replacement files
+    2. Patches the TOC so those specific assets point to the new archive
+    3. All other assets remain pointing to original archives (untouched)
+
+    Usage:
+      --files "asset_name_or_id=replacement_file" pairs
+      The new archive is placed in archive-dir so the game can find it.
+    """
+    toc = _auto_toc(args)
+    archive_dir = args.archive_dir
+    mod_name = args.mod_name
+    out_toc = getattr(args, 'output_toc', None) or 'toc.new'
+    backup = not getattr(args, 'no_backup', False)
+
+    # Backup original TOC
+    if backup:
+        bak = toc.toc_path + '.BAK'
+        if not os.path.exists(bak):
+            import shutil
+            shutil.copy2(toc.toc_path, bak)
+            print(f'  Backup: {bak}')
+
+    # Parse --files pairs: "asset=file" or "0xHASH=file"
+    pairs = []
+    for entry in args.files:
+        if '=' not in entry:
+            print(f'  ERROR: invalid format "{entry}", expected "asset_name=file_path"'); return
+        asset_ref, file_path = entry.split('=', 1)
+        if not os.path.exists(file_path):
+            print(f'  ERROR: file not found: {file_path}'); return
+
+        # Find asset by name, hash, or ID
+        asset = None
+        if asset_ref.startswith(('0x','0X')):
+            asset = toc.get_by_id(int(asset_ref, 16))
+        if not asset:
+            asset = toc.get_by_name(asset_ref)
+        if not asset:
+            results = toc.search(asset_ref)
+            if len(results) == 1:
+                asset = results[0]
+            elif len(results) > 1:
+                print(f'  ERROR: "{asset_ref}" matches {len(results)} assets, be more specific'); return
+        if not asset:
+            print(f'  ERROR: asset not found: {asset_ref}'); return
+        pairs.append((asset, file_path))
+
+    if not pairs:
+        print('No files to patch.'); return
+
+    # Use the next available archive index (beyond existing archives)
+    new_idx = max(a.index for a in toc.archive_files) + 1
+
+    # Write mod archive
+    mod_path = os.path.join(archive_dir, mod_name)
+    os.makedirs(os.path.dirname(mod_path) if os.path.dirname(mod_path) else '.', exist_ok=True)
+
+    print(f'\n=== Patch: {len(pairs)} asset(s) → {mod_name} ===')
+
+    with open(mod_path, 'wb') as out:
+        for asset, file_path in pairs:
+            data = open(file_path, 'rb').read()
+            new_off = out.tell()
+            out.write(data)
+            toc.patch_redirect(asset, new_idx, new_off, len(data))
+            print(f'  ✓ {asset.filename} ← {file_path} ({len(data):,} B)')
+
+    mod_size = os.path.getsize(mod_path)
+    print(f'  Archive: {mod_path} ({mod_size:,} bytes)')
+
+    # Save patched TOC
+    toc.save(out_toc)
+    print(f'  Done. Replace your toc with {out_toc}')
+    print(f'  Game will load patched assets from {mod_name}')
+
 def main():
     import argparse
     p = argparse.ArgumentParser(prog='smps4tool', description='Spider-Man PS4 Asset Tool')
@@ -1055,6 +1134,14 @@ def main():
     s.add_argument('csv', help='Translated CSV file path')
     s.add_argument('output', help='Output localization file path')
 
+    s = sub.add_parser('patch', help='Patch specific assets → small mod archive + new TOC')
+    s.add_argument('--archive-dir', required=True, help='Game archive directory')
+    s.add_argument('--mod-name', required=True, help='Name for the mod archive file')
+    s.add_argument('--files', nargs='+', required=True,
+                   help='asset=file pairs (e.g. "0xBE55D94F171BF8DE=modified.localization")')
+    s.add_argument('--output-toc', default='toc.new', help='Output TOC path')
+    s.add_argument('--no-backup', action='store_true', help='Skip TOC backup')
+
     args = p.parse_args()
     cmds = {
         'build-hashdb': cmd_build_hashdb, 'info': cmd_info,
@@ -1062,6 +1149,7 @@ def main():
         'hash': cmd_hash, 'dag': cmd_dag,
         'repack': cmd_repack, 'repack-dir': cmd_repack_dir,
         'loc-export': cmd_loc_export, 'loc-import': cmd_loc_import,
+        'patch': cmd_patch,
     }
     if args.cmd not in cmds: p.print_help(); return
     cmds[args.cmd](args)
