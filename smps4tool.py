@@ -113,35 +113,70 @@ DAT1_MAGIC = 0x44415431
 ARCH_STRIDE = 24   # PS4: 24 bytes (PC: 72 bytes)
 
 # Language detection for localization files.
-# Maps known translation of 'ABANDON_CONFIRM_HEADER' → language code.
-# Used to auto-detect language when extracting duplicate localization files.
-_LANG_DETECT_KEY = 'ABANDON_CONFIRM_HEADER'
-_LANG_SIGNATURES = {
+# Uses 'TEST_ALL_LANG' key as primary discriminator, falls back to
+# 'ABANDON_CONFIRM_HEADER' translation for identification.
+_LANG_DETECT_KEYS = ('TEST_ALL_LANG', 'ABANDON_CONFIRM_HEADER')
+
+# TEST_ALL_LANG value → language code
+_TEST_LANG_MAP = {
+    'Test all languages': 'en-US',
+    'english(uk)':        'en-GB',
+    'japanese':           'ja',
+    'french(fr)':         'fr',
+    'french(ca)':         'fr-CA',
+    'spanish(sp)':        'es',
+    'spanish(mex)':       'es-LA',
+    'german':             'de',
+    'italian':            'it',
+    'dutch':              'nl',
+    'port(port)':         'pt',
+    'port(br)':           'pt-BR',
+    'russian':            'ru',
+    'polish':             'pl',
+    'danish':             'da',
+    'norwegian':          'no',
+    'swedish':            'sv',
+    'finnish':            'fi',
+    'czech':              'cs',
+    'greek':              'el',
+    'turkish':            'tr',
+    'hungarian':          'hu',
+    'romanian':           'ro',
+    'chinese traditional':'zh-Hant',
+    'chinese simplified': 'zh-Hans',
+    'arabic':             'ar',
+    'thai':               'th',
+    'vietnamese':         'vi',
+    'indonesian':         'id',
+    'hindi':              'hi',
+}
+
+# Fallback: ABANDON_CONFIRM_HEADER translation → language code
+_HEADER_LANG_MAP = {
     'ARE YOU SURE?':        'en',
-    'ÊTES-VOUS SÛR(E)\u00a0?': 'fr', 'ES-TU SÛR ?': 'fr', 'ÊTES-VOUS SÛR ?': 'fr',
     '¿SEGURO?':             'es',
     'BIST DU SICHER?':      'de',
-    'SEI SICURO?':          'it', 'SICURO?': 'it',
+    'CONFIRMER ?':          'fr',
+    'SEI SICURO?':          'it', 'CONFERMI?': 'it',
     'WEET JE HET ZEKER?':   'nl',
-    'TEM CERTEZA?':         'pt',
+    'TEM CERTEZA?':         'pt', 'TENS A CERTEZA?': 'pt',
     'ВЫ УВЕРЕНЫ?':          'ru',
-    '확실합니까?':              'ko',
-    '你確定嗎？':              'zh-Hant',
-    '确定吗？':               'zh-Hans',
-    'OLETKO VARMA?':        'fi',
-    'ÄR DU SÄKER?':         'sv',
-    'ER DU SIKKER?':        'da',  # same as Norwegian but ok
     'NA PEWNO?':            'pl',
+    'ER DU SIKKER?':        'da',
+    'ÄR DU SÄKER?':         'sv',
+    'IHANKO VARMASTI?':     'fi',
     'JSTE SI JISTÍ?':       'cs',
-    'ΣΙΓΟΥΡΑ;':             'el', 'ΕΊΣΤΕ ΣΊΓΟΥΡΟΙ;': 'el',
-    'EMİN MİSİN?':         'tr',
-    'هل أنت متأكد؟':        'ar',
-    'SIGUR?':               'ro', 'EȘTI SIGUR?': 'ro',
+    'ΤΟ ΘΕΛΕΙΣ ΣΙΓΟΥΡΑ;':   'el', 'ΕΊΣΤΕ ΣΊΓΟΥΡΟΙ;': 'el',
+    'BIZTOS VAGY BENNE?':   'hu',
     'よろしいですか？':         'ja',
-    'BIZTOS VAGY BENNE?':   'hu', 'BIZTOS?': 'hu',
-    'ER DU SIKKER PÅ DET?': 'no',
-    'BẠN CÓ CHẮC KHÔNG?':  'vi',
+    '확실합니까?':              'ko', '정말 괜찮습니까?': 'ko',
+    '你確定嗎？':              'zh-Hant',
+    '你确定吗？':              'zh-Hans',
 }
+
+# Korean TEST_ALL_LANG is in Korean script, detect separately
+_TEST_LANG_KO = '모든 언어 시험'
+
 # All known language codes used in suffixes
 _ALL_LANG_CODES = [
     'ja','en','en-US','en-GB','fr','fr-CA','es','es-LA','de','it','nl','pt','pt-BR',
@@ -150,7 +185,11 @@ _ALL_LANG_CODES = [
 ]
 
 def _detect_loc_language(data: bytes) -> str:
-    """Detect language from raw localization asset bytes (LZ4+DAT1)."""
+    """Detect language from raw localization asset bytes (LZ4+DAT1).
+
+    Uses TEST_ALL_LANG key (e.g. 'japanese', 'french(fr)') as primary signal.
+    Falls back to ABANDON_CONFIRM_HEADER translation if TEST_ALL_LANG missing.
+    """
     try:
         import lz4.block
         rawsize = struct.unpack('<I', data[4:8])[0]
@@ -171,17 +210,42 @@ def _detect_loc_language(data: bytes) -> str:
         if ko_sz == 0: return 'und'
 
         count = ko_sz // 4
-        for i in range(min(count, 500)):  # scan first 500 entries max
+        found = {}
+        for i in range(count):
             ko = struct.unpack('<i', dec[ko_off+i*4:ko_off+i*4+4])[0]
             to = struct.unpack('<i', dec[to_off+i*4:to_off+i*4+4])[0]
             kpos = kd_off + ko
             kend = dec.index(b'\x00', kpos)
             key = dec[kpos:kend].decode('utf-8','replace')
-            if key == _LANG_DETECT_KEY and to != 0:
+            if key in _LANG_DETECT_KEYS and to != 0:
                 tpos = td_off + to
                 tend = dec.index(b'\x00', tpos)
-                val = dec[tpos:tend].decode('utf-8','replace')
-                return _LANG_SIGNATURES.get(val, 'und')
+                found[key] = dec[tpos:tend].decode('utf-8','replace')
+            if len(found) >= 2:
+                break
+
+        # Primary: TEST_ALL_LANG
+        test_val = found.get('TEST_ALL_LANG', '').strip().lower()
+        if test_val:
+            if test_val == _TEST_LANG_KO.lower() or '언어' in test_val:
+                return 'ko'
+            for phrase, lang in _TEST_LANG_MAP.items():
+                if phrase.lower() == test_val:
+                    return lang
+
+        # Fallback: ABANDON_CONFIRM_HEADER
+        header_val = found.get('ABANDON_CONFIRM_HEADER', '').strip()
+        if header_val:
+            lang = _HEADER_LANG_MAP.get(header_val)
+            if lang:
+                return lang
+
+        # Check if file has any translations at all
+        non_empty = sum(1 for i in range(min(count, 100))
+                        if struct.unpack('<i', dec[to_off+i*4:to_off+i*4+4])[0] != 0)
+        if non_empty == 0:
+            return 'und'
+
     except Exception:
         pass
     return 'und'
