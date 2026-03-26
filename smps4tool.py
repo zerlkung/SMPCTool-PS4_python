@@ -111,6 +111,47 @@ DAG_MAGIC  = 0x891F77AF
 DAT1_MAGIC = 0x44415431
 ARCH_STRIDE = 24   # PS4: 24 bytes (PC: 72 bytes)
 
+# PS4 system language index → language tag
+# Used to disambiguate duplicate localization filenames during extract.
+PS4_LANG = [
+    'ja','en-US','fr','es','de','it','nl','pt','ru','ko',
+    'zh-Hant','zh-Hans','fi','sv','da','no','pl','pt-BR','en-GB','tr',
+    'es-LA','ar','fr-CA','cs','hu','el','ro','th','vi','id','hi','und',
+]
+
+def _lang_suffix_for(asset, all_assets):
+    """Return a language suffix like '.en-US' for localization duplicates.
+
+    When multiple assets share the same filename (e.g. localization_all.localization
+    appears 32 times, one per language), we detect this and assign a suffix based
+    on the asset's position among its duplicates, mapped to PS4_LANG.
+
+    Returns '' for non-duplicate filenames.
+    """
+    if asset.filename.startswith('0x'):
+        return ''
+    dupes = [a for a in all_assets
+             if a.filename == asset.filename and a.archive_name == asset.archive_name]
+    if len(dupes) <= 1:
+        return ''
+    idx = dupes.index(asset)
+    lang = PS4_LANG[idx] if idx < len(PS4_LANG) else f'lang{idx}'
+    return f'.{lang}'
+
+def _strip_lang_suffix(filename):
+    """Remove a language suffix added by extract, e.g.
+    'localization_all.localization.en-US' → 'localization_all.localization'
+    """
+    for lang in PS4_LANG:
+        if filename.endswith(f'.{lang}'):
+            return filename[:-(len(lang)+1)]
+    # Also handle fallback 'lang##' suffixes
+    import re
+    m = re.match(r'^(.+)\.lang\d+$', filename)
+    if m:
+        return m.group(1)
+    return filename
+
 
 # ─── Data classes ─────────────────────────────────────────────────────────────
 @dataclass
@@ -492,6 +533,101 @@ def cmd_repack(args):
         print(f'  The new archive only contains named assets.')
 
 
+def cmd_repack_dir(args):
+    """Repack from an extracted directory.
+
+    Reads files from a directory (as produced by 'extract'), rebuilds the archive,
+    and generates a new TOC.  For localization files that were extracted with a
+    language suffix (e.g. localization_all.localization.en-US), the suffix is
+    stripped and the file is matched back to the correct asset entry by position.
+    Files not found in the directory are read from the original archive as-is.
+    """
+    toc = _auto_toc(args)
+    archive_name = args.archive
+    extract_dir = args.dir
+    out_archive = getattr(args, 'output_archive', None) or archive_name
+    out_toc = getattr(args, 'output_toc', None) or 'toc.new'
+    is_flat = getattr(args, 'flat', False)
+
+    reader = ArchiveReader(args.archive_dir)
+    assets = toc.by_archive(archive_name)
+    if not assets:
+        print(f'No assets in archive: {archive_name}'); return
+
+    orig_idx = assets[0].archive_index
+
+    # Build a map: for each asset, find the corresponding file in extract_dir.
+    # Handle language suffixes: extract produces e.g.
+    #   localization_all.localization.en-US  (flat)
+    #   localization/localization_all.localization.en-US  (tree)
+    # We need to match these back to the correct asset entry.
+
+    # Scan extracted files
+    extracted_files = {}
+    for root, _dirs, files in os.walk(extract_dir):
+        for fname in files:
+            fpath = os.path.join(root, fname)
+            extracted_files[fname] = fpath
+            # Also store the relative path version
+            rel = os.path.relpath(fpath, extract_dir)
+            extracted_files[rel] = fpath
+
+    print(f'\n=== Repack from directory: {extract_dir} ===')
+    print(f'  Archive: {archive_name} ({len(assets):,} assets)')
+    print(f'  Found {len(extracted_files)//2:,} files in directory')
+
+    os.makedirs(os.path.dirname(out_archive) or '.', exist_ok=True)
+    ok = replaced = from_orig = err = 0
+
+    with open(out_archive, 'wb') as out:
+        for a in assets:
+            try:
+                lang = _lang_suffix_for(a, assets)
+                data = None
+
+                # Try to find a replacement file in the extract directory
+                candidates = []
+                if is_flat or '\\' not in a.filename:
+                    safe = a.filename.replace('\\','_').replace('/','_')
+                    candidates.append(safe + lang)       # with lang suffix
+                    candidates.append(safe)              # without
+                else:
+                    rel = a.filename.replace('\\', os.sep)
+                    candidates.append(rel + lang)
+                    candidates.append(rel)
+                    # Also flat versions
+                    safe = a.filename.replace('\\','_').replace('/','_')
+                    candidates.append(safe + lang)
+                    candidates.append(safe)
+
+                for c in candidates:
+                    if c in extracted_files:
+                        data = open(extracted_files[c], 'rb').read()
+                        replaced += 1
+                        break
+
+                # Fallback: read from original archive
+                if data is None:
+                    data = reader.read_asset(a)
+                    from_orig += 1
+
+                new_off = out.tell()
+                out.write(data)
+                toc.patch_redirect(a, orig_idx, new_off, len(data))
+                ok += 1
+            except Exception as e:
+                print(f'  ✗ {a.filename}: {e}')
+                err += 1
+
+    archive_size = os.path.getsize(out_archive)
+    toc.save(out_toc)
+
+    print(f'  Repacked: {ok:,} assets ({replaced:,} from dir, {from_orig:,} from original)')
+    print(f'  Errors: {err}')
+    print(f'  Archive: {out_archive} ({archive_size:,} bytes)')
+    print(f'  TOC: {out_toc}')
+
+
 def _auto_toc(args) -> TOC:
     hashdb = getattr(args,'hashdb',None)
     if not hashdb or not os.path.exists(hashdb):
@@ -553,15 +689,17 @@ def cmd_extract(args):
             skipped += 1; continue
         try:
             data = reader.read_asset(a)
+            lang = _lang_suffix_for(a, assets)
             if getattr(args,'flat',False) or '\\' not in a.filename:
-                safe = a.filename.replace('\\','_').replace('/','_')
+                safe = a.filename.replace('\\','_').replace('/','_') + lang
                 out_path = os.path.join(args.output, safe)
             else:
-                rel = a.filename.replace('\\', os.sep)
+                rel = a.filename.replace('\\', os.sep) + lang
                 out_path = os.path.join(args.output, rel)
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path,'wb') as f: f.write(data)
-            print(f'  ✓ {a.filename}  ({len(data):,} B)')
+            disp = a.filename + lang
+            print(f'  ✓ {disp}  ({len(data):,} B)')
             ok += 1
         except Exception as e:
             print(f'  ✗ {a.filename}: {e}'); err += 1
@@ -642,6 +780,14 @@ def main():
     s.add_argument('--output-toc', default='toc.new', help='Output TOC path (default: toc.new)')
     s.add_argument('--skip-hex', action='store_true', help='Exclude hex-ID assets from repack')
 
+    s = sub.add_parser('repack-dir', help='Repack from extracted dir (supports lang suffixes)')
+    s.add_argument('--archive-dir', required=True, help='Original archive directory')
+    s.add_argument('--archive', required=True, help='Archive name to repack')
+    s.add_argument('--dir', required=True, help='Directory with extracted/modified files')
+    s.add_argument('--output-archive', default=None, help='Output archive path')
+    s.add_argument('--output-toc', default='toc.new', help='Output TOC path')
+    s.add_argument('--flat', action='store_true', help='Files in dir are flat (no subdirs)')
+
     s = sub.add_parser('csv', help='Export asset list to CSV')
     s.add_argument('--output', default='assets.csv')
 
@@ -670,7 +816,7 @@ def main():
         'list': cmd_list, 'extract': cmd_extract, 'csv': cmd_csv,
         'hash': cmd_hash, 'dag': cmd_dag, 'create-mod': cmd_create_mod,
         'install-mod': cmd_install, 'uninstall': cmd_uninstall,
-        'repack': cmd_repack,
+        'repack': cmd_repack, 'repack-dir': cmd_repack_dir,
     }
     if args.cmd not in cmds: p.print_help(); return
     cmds[args.cmd](args)
