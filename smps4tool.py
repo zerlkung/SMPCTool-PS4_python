@@ -449,6 +449,169 @@ class ModManager:
         shutil.copy2(bak, self.toc.toc_path); print(f'Restored from {bak}')
 
 
+# ─── Localization ─────────────────────────────────────────────────────────────
+# Section IDs from team-waldo/InsomniacArchive LocalizationFile.cs
+_LOC_KEY_DATA   = 0x4D73CEBD
+_LOC_KEY_OFF    = 0xA4EA55B2
+_LOC_TR_DATA    = 0x70A382B8
+_LOC_TR_OFF     = 0xF80DEEB4
+
+def _loc_decompress(path: str) -> bytes:
+    """Decompress an Insomniac asset file (LZ4 with 0x24-byte header)."""
+    try:
+        import lz4.block
+    except ImportError:
+        print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
+    with open(path,'rb') as f: raw = f.read()
+    magic = struct.unpack('<I', raw[0:4])[0]
+    rawsize = struct.unpack('<I', raw[4:8])[0]
+    compressed = raw[0x24:]
+    if len(compressed) == rawsize:
+        return compressed  # not compressed
+    return lz4.block.decompress(compressed, uncompressed_size=rawsize)
+
+def _loc_compress(dec: bytes, magic: int) -> bytes:
+    """Compress data back into Insomniac asset format."""
+    try:
+        import lz4.block
+    except ImportError:
+        print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
+    compressed = lz4.block.compress(dec, store_size=False)
+    header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
+    return header + compressed
+
+def _loc_parse_sections(dec: bytes) -> dict:
+    """Parse DAT1 sections, return {hash: (offset, size)}."""
+    nsec = struct.unpack('<I', dec[12:16])[0]
+    sections = {}
+    pos = 16
+    for _ in range(nsec):
+        h, off, sz = struct.unpack('<III', dec[pos:pos+12])
+        sections[h] = (off, sz)
+        pos += 12
+    return sections
+
+def _loc_get_string(dec: bytes, base: int, off: int) -> str:
+    pos = base + off
+    end = dec.index(b'\x00', pos)
+    return dec[pos:end].decode('utf-8', errors='replace')
+
+def loc_export(loc_path: str, csv_path: str) -> int:
+    """Export localization asset → CSV (key, source, translation)."""
+    dec = _loc_decompress(loc_path)
+    sec = _loc_parse_sections(dec)
+
+    kd_off, _ = sec[_LOC_KEY_DATA]
+    ko_off, ko_sz = sec[_LOC_KEY_OFF]
+    td_off, _ = sec[_LOC_TR_DATA]
+    to_off, _ = sec[_LOC_TR_OFF]
+    count = ko_sz // 4
+
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.writer(f)
+        w.writerow(['key', 'source', 'translation'])
+        for i in range(count):
+            ko = struct.unpack('<i', dec[ko_off+i*4:ko_off+i*4+4])[0]
+            to = struct.unpack('<i', dec[to_off+i*4:to_off+i*4+4])[0]
+            key = _loc_get_string(dec, kd_off, ko)
+            val = _loc_get_string(dec, td_off, to) if to != 0 or key == 'INVALID' else ''
+            w.writerow([key, val, ''])
+
+    print(f'Exported {count:,} strings to {csv_path}')
+    return count
+
+def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
+    """Import translated CSV back into localization asset."""
+    # Read translations from CSV
+    translations = {}
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        for row in reader:
+            if len(row) >= 3 and row[2].strip():
+                translations[row[0]] = row[2]
+    print(f'Loaded {len(translations):,} translations from {csv_path}')
+
+    # Decompress original
+    with open(loc_path, 'rb') as f: raw = f.read()
+    magic = struct.unpack('<I', raw[0:4])[0]
+    dec = _loc_decompress(loc_path)
+    sec = _loc_parse_sections(dec)
+
+    kd_off, _ = sec[_LOC_KEY_DATA]
+    ko_off, ko_sz = sec[_LOC_KEY_OFF]
+    td_off, td_sz = sec[_LOC_TR_DATA]
+    to_off, _ = sec[_LOC_TR_OFF]
+    count = ko_sz // 4
+
+    # Build new translation data
+    new_tr_data = bytearray()
+    new_tr_offsets = []
+    imported = 0
+
+    for i in range(count):
+        ko = struct.unpack('<i', dec[ko_off+i*4:ko_off+i*4+4])[0]
+        to = struct.unpack('<i', dec[to_off+i*4:to_off+i*4+4])[0]
+        key = _loc_get_string(dec, kd_off, ko)
+
+        if key in translations:
+            value = translations[key]
+            imported += 1
+        else:
+            value = _loc_get_string(dec, td_off, to) if to != 0 or key == 'INVALID' else ''
+
+        if key != 'INVALID' and value == '':
+            new_tr_offsets.append(0)
+        else:
+            new_tr_offsets.append(len(new_tr_data))
+            new_tr_data.extend(value.encode('utf-8') + b'\x00')
+
+    # Patch decompressed data: replace translation data + offsets
+    buf = bytearray(dec)
+
+    # Replace translation offsets section
+    for i in range(count):
+        struct.pack_into('<i', buf, to_off + i*4, new_tr_offsets[i])
+
+    # Replace translation data section — need to update section size in header
+    old_td_end = td_off + td_sz
+    new_td = bytes(new_tr_data)
+
+    # Rebuild: everything before tr_data + new tr_data + everything after old tr_data
+    # Since tr_data is the LAST section (highest offset), we can just truncate and append
+    # But sections aren't guaranteed to be in order, so we do it carefully
+    # Find which section is at the end of the file
+    all_secs = sorted(sec.items(), key=lambda x: x[1][0])
+    
+    # TranslationData (0x70A382B8) is last section by offset — just replace in place
+    if all_secs[-1][0] == _LOC_TR_DATA:
+        new_dec = bytes(buf[:td_off]) + new_td
+        # Update section size in DAT1 header
+        nsec = struct.unpack('<I', new_dec[12:16])[0]
+        pos = 16
+        new_dec_buf = bytearray(new_dec)
+        for _ in range(nsec):
+            h = struct.unpack('<I', new_dec_buf[pos:pos+4])[0]
+            if h == _LOC_TR_DATA:
+                struct.pack_into('<I', new_dec_buf, pos+8, len(new_td))
+            pos += 12
+        new_dec = bytes(new_dec_buf)
+    else:
+        # Fallback: just patch in place (may leave garbage but size stays same)
+        new_dec_buf = bytearray(buf)
+        new_dec_buf[td_off:td_off+len(new_td)] = new_td
+        new_dec = bytes(new_dec_buf)
+
+    # Compress and save
+    out_data = _loc_compress(new_dec, magic)
+    with open(out_path, 'wb') as f:
+        f.write(out_data)
+
+    print(f'Imported {imported:,} translations, saved to {out_path}')
+    print(f'  Original: {len(raw):,} bytes → New: {len(out_data):,} bytes')
+    return imported
+
+
 # ─── CLI ──────────────────────────────────────────────────────────────────────
 
 def repack_archive(toc: TOC, archive_name: str, archive_dir: str,
@@ -747,6 +910,12 @@ def cmd_install(args):
 def cmd_uninstall(args):
     toc = TOC(args.toc); ModManager(toc, '.').uninstall()
 
+def cmd_loc_export(args):
+    loc_export(args.input, args.output)
+
+def cmd_loc_import(args):
+    loc_import(args.input, args.csv, args.output)
+
 def main():
     import argparse
     p = argparse.ArgumentParser(prog='smps4tool', description='Spider-Man PS4 Asset Tool')
@@ -810,6 +979,15 @@ def main():
 
     sub.add_parser('uninstall', help='Restore TOC from .BAK')
 
+    s = sub.add_parser('loc-export', help='Export localization asset → CSV')
+    s.add_argument('input', help='Localization file path (extracted .localization asset)')
+    s.add_argument('output', help='Output CSV path')
+
+    s = sub.add_parser('loc-import', help='Import translated CSV → localization asset')
+    s.add_argument('input', help='Original localization file path')
+    s.add_argument('csv', help='Translated CSV file path')
+    s.add_argument('output', help='Output localization file path')
+
     args = p.parse_args()
     cmds = {
         'build-hashdb': cmd_build_hashdb, 'info': cmd_info,
@@ -817,6 +995,7 @@ def main():
         'hash': cmd_hash, 'dag': cmd_dag, 'create-mod': cmd_create_mod,
         'install-mod': cmd_install, 'uninstall': cmd_uninstall,
         'repack': cmd_repack, 'repack-dir': cmd_repack_dir,
+        'loc-export': cmd_loc_export, 'loc-import': cmd_loc_import,
     }
     if args.cmd not in cmds: p.print_help(); return
     cmds[args.cmd](args)
