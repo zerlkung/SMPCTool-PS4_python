@@ -20,11 +20,11 @@ Single-file, pure Python 3, zero external dependencies. Works as both a CLI tool
 
 ## Bugfix from v2 Original
 
-**Archive name truncation** — The original v2 read archive names as a fixed 8-byte field, causing localized audio archives like `a00s019.us`, `a00s020.fr`, `a00s021.de` to be truncated to `a00s019.`, `a00s020.`, `a00s021.` — making them impossible to search or extract by name.
+**Archive name truncation** — The original v2 read archive names as a fixed 8-byte field, causing archives with longer names (e.g., `a00s019.us`, `a00s020.fr`, `a00s021.de`) to be truncated to `a00s019.`, `a00s020.`, `a00s021.` — making them impossible to search or extract by name.
 
 **Fix**: Changed `_parse_archives()` to read null-terminated strings instead of a fixed 8-byte window.
 
-Affected archives (all 9 localized audio):
+Affected archives (9 locale-suffixed archives):
 
 ```
 a00s019.us  a00s020.fr  a00s021.de  a00s022.it  a00s024.pl
@@ -100,7 +100,24 @@ python3 smps4tool.py extract --archive-dir /path/to/game \
 # Flat output (no subdirectories)
 python3 smps4tool.py extract --archive-dir /path/to/game \
     --search "npc_vulture" --output out/ --flat
+
+# Skip unnamed assets (hex IDs) — extract only named files
+python3 smps4tool.py extract --archive-dir /path/to/game \
+    --archive p000045 --output out/ --skip-hex
 ```
+
+### `repack` — Rebuild archive + generate new TOC
+```bash
+# Repack an archive (reads all assets → new archive + new TOC)
+python3 smps4tool.py repack --archive-dir /path/to/game \
+    --archive p000045 --output-archive p000045_new --output-toc toc.new
+
+# Repack without hex-ID assets (smaller archive)
+python3 smps4tool.py repack --archive-dir /path/to/game \
+    --archive p000045 --output-archive p000045_new --output-toc toc.new --skip-hex
+```
+
+> **Note**: Repack creates both a new archive file and a new TOC, because the TOC stores each asset's offset/size within the archive. When assets are repacked, all offsets change and the TOC must be regenerated to match.
 
 ### `csv` — Export full asset list
 ```bash
@@ -197,7 +214,7 @@ dag                         ← All asset names (386k strings)
 
 g00s000, g00s001, ...       ← Large archives (gameplay, textures, models)
 p000026, p000027, ...       ← Small archives (localization, configs)
-a00s019.us, a00s020.fr, ... ← Audio archives (locale-specific)
+a00s019.us, a00s020.fr, ... ← Locale-specific archives (with language suffix)
 
 Archive format: Raw concat   (PC uses RDPA + custom LZ)
 Asset format:   0xBA20AFB5 wrapper + DAT1 content
@@ -266,7 +283,7 @@ These are anonymous assets with no string path in the game data — procedurally
 
 ### Bugfix จาก v2 Original
 
-**Archive name truncation** — ไฟล์ v2 ดั้งเดิมอ่านชื่อ archive แค่ 8 bytes ทำให้ localized audio archives เช่น `a00s019.us`, `a00s020.fr`, `a00s021.de` ถูกตัดเหลือ `a00s019.`, `a00s020.`, `a00s021.` → ค้นหา/extract ไม่ได้
+**Archive name truncation** — ไฟล์ v2 ดั้งเดิมอ่านชื่อ archive แค่ 8 bytes ทำให้ archive ที่ชื่อยาวกว่า 8 ตัวอักษร เช่น `a00s019.us`, `a00s020.fr`, `a00s021.de` ถูกตัดเหลือ `a00s019.`, `a00s020.`, `a00s021.` → ค้นหา/extract ไม่ได้
 
 **แก้ไข**: เปลี่ยน `_parse_archives()` ให้อ่าน null-terminated string แทน fixed 8 bytes
 
@@ -321,7 +338,24 @@ python3 smps4tool.py extract --archive-dir /path/to/game \
 # ค้นหาและ extract หลายไฟล์
 python3 smps4tool.py extract --archive-dir /path/to/game \
     --search "npc_vulture" --output out/
+
+# ข้ามไฟล์ที่เป็น hex ID (extract เฉพาะไฟล์ที่มีชื่อ)
+python3 smps4tool.py extract --archive-dir /path/to/game \
+    --archive p000045 --output out/ --skip-hex
 ```
+
+#### `repack` — สร้าง archive ใหม่ + TOC ใหม่
+```bash
+# Repack archive (อ่าน asset ทั้งหมด → สร้าง archive ใหม่ + TOC ใหม่)
+python3 smps4tool.py repack --archive-dir /path/to/game \
+    --archive p000045 --output-archive p000045_new --output-toc toc.new
+
+# Repack โดยไม่เอาไฟล์ hex ID (archive เล็กลง)
+python3 smps4tool.py repack --archive-dir /path/to/game \
+    --archive p000045 --output-archive p000045_new --output-toc toc.new --skip-hex
+```
+
+> **หมายเหตุ**: Repack สร้างทั้ง archive ใหม่และ TOC ใหม่ เพราะ TOC เก็บ offset/size ของแต่ละ asset ภายใน archive พอ repack แล้ว offset เปลี่ยนหมด ต้อง patch TOC ให้ตรงกัน
 
 #### `csv` — export รายการ asset ทั้งหมด
 ```bash
@@ -394,7 +428,7 @@ toc                         ← index ของทุก asset (Magic: 0xAF12AF7
 dag                         ← รายชื่อ asset 386k ชื่อ (Magic: 0x891F77AF)
 g00s000, g00s001, ...       ← archive ใหญ่ (gameplay, textures, models)
 p000026, p000027, ...       ← archive เล็ก (localization, configs)
-a00s019.us, a00s020.fr, ... ← archive audio (แยกตามภาษา)
+a00s019.us, a00s020.fr, ... ← archive แยกตามภาษา (มี locale suffix)
 ```
 
 - Archive format: Raw concat (ไม่มี compression, PC ใช้ RDPA+LZ)
