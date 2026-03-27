@@ -1,4 +1,4 @@
-# SMPCTool-PS4 Python 🕷️
+# SMPCTool-PS4 Python 🕷️ | WIP
 
 **Spider-Man PS4 Asset Tool** — A Python rewrite of [SMPCTool-PS4](https://github.com/zerlkung/SMPCTool-PS4) (C#) for managing Marvel's Spider-Man game files on PS4.
 
