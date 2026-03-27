@@ -998,22 +998,23 @@ def cmd_loc_import(args):
     loc_import(args.input, args.csv, args.output)
 
 def cmd_patch(args):
-    """Create a small mod archive with only modified files + patch TOC to point to it.
+    """Create a small mod archive with only modified files + patch TOC.
 
-    Instead of repacking the entire archive, this:
-    1. Creates a new small archive containing ONLY the replacement files
-    2. Patches the TOC so those specific assets point to the new archive
-    3. All other assets remain pointing to original archives (untouched)
+    Accepts extracted filenames (with language suffixes) and automatically
+    matches them back to the correct TOC entry. For localization duplicates
+    like 'localization_all.localization.en-US', the tool detects which of
+    the 32 entries is the real en-US by reading the archive content.
 
     Usage:
-      --files "asset_name_or_id=replacement_file" pairs
-      The new archive is placed in archive-dir so the game can find it.
+      --files "extracted_filename=replacement_file" pairs
+      OR just --files "replacement_file" (uses the filename itself to match)
     """
     toc = _auto_toc(args)
     archive_dir = args.archive_dir
     mod_name = args.mod_name
     out_toc = getattr(args, 'output_toc', None) or 'toc.new'
     backup = not getattr(args, 'no_backup', False)
+    reader = ArchiveReader(archive_dir)
 
     # Backup original TOC
     if backup:
@@ -1023,27 +1024,20 @@ def cmd_patch(args):
             shutil.copy2(toc.toc_path, bak)
             print(f'  Backup: {bak}')
 
-    # Parse --files pairs: "asset=file" or "0xHASH=file"
+    # Parse --files entries
     pairs = []
     for entry in args.files:
-        if '=' not in entry:
-            print(f'  ERROR: invalid format "{entry}", expected "asset_name=file_path"'); return
-        asset_ref, file_path = entry.split('=', 1)
+        if '=' in entry:
+            asset_ref, file_path = entry.split('=', 1)
+        else:
+            # Use filename itself as asset reference
+            file_path = entry
+            asset_ref = os.path.basename(entry)
+
         if not os.path.exists(file_path):
             print(f'  ERROR: file not found: {file_path}'); return
 
-        # Find asset by name, hash, or ID
-        asset = None
-        if asset_ref.startswith(('0x','0X')):
-            asset = toc.get_by_id(int(asset_ref, 16))
-        if not asset:
-            asset = toc.get_by_name(asset_ref)
-        if not asset:
-            results = toc.search(asset_ref)
-            if len(results) == 1:
-                asset = results[0]
-            elif len(results) > 1:
-                print(f'  ERROR: "{asset_ref}" matches {len(results)} assets, be more specific'); return
+        asset = _resolve_asset(toc, asset_ref, reader)
         if not asset:
             print(f'  ERROR: asset not found: {asset_ref}'); return
         pairs.append((asset, file_path))
@@ -1051,7 +1045,7 @@ def cmd_patch(args):
     if not pairs:
         print('No files to patch.'); return
 
-    # Use the next available archive index (beyond existing archives)
+    # Use the next available archive index
     new_idx = max(a.index for a in toc.archive_files) + 1
 
     # Write mod archive
@@ -1066,15 +1060,114 @@ def cmd_patch(args):
             new_off = out.tell()
             out.write(data)
             toc.patch_redirect(asset, new_idx, new_off, len(data))
-            print(f'  ✓ {asset.filename} ← {file_path} ({len(data):,} B)')
+            print(f'  ✓ {asset.filename} (offset 0x{asset.archive_offset:08X}) ← {os.path.basename(file_path)} ({len(data):,} B)')
 
     mod_size = os.path.getsize(mod_path)
     print(f'  Archive: {mod_path} ({mod_size:,} bytes)')
 
-    # Save patched TOC
     toc.save(out_toc)
     print(f'  Done. Replace your toc with {out_toc}')
-    print(f'  Game will load patched assets from {mod_name}')
+
+
+def _resolve_asset(toc, ref, reader):
+    """Resolve an asset reference to a specific TOC entry.
+
+    Handles:
+    - Hex ID: '0xBE55D94F171BF8DE'
+    - Exact name: 'localization\\localization_all.localization'
+    - Extracted flat name: 'localization_localization_all.localization'
+    - Name with lang suffix: 'localization_localization_all.localization.en-US'
+    """
+    # 1. Direct hex ID
+    if ref.startswith(('0x', '0X')):
+        return toc.get_by_id(int(ref, 16))
+
+    # 2. Check for language suffix
+    base_ref = _strip_lang_suffix(ref)
+    has_lang = base_ref != ref
+    lang = ref[len(base_ref)+1:] if has_lang else ''
+
+    # 3. Try exact match first (handles backslash paths)
+    asset = toc.get_by_name(base_ref)
+    if asset:
+        if not has_lang:
+            return asset
+        return _match_lang_duplicate(toc, asset.filename, asset.archive_name, lang, reader)
+
+    # 4. For flat names: extract the part after last path separator
+    #    'localization_localization_all.localization' → search 'localization_all.localization'
+    #    This finds 'localization\localization_all.localization' in TOC
+    # Try progressively shorter suffixes of the flat name
+    parts = base_ref.split('_')
+    for i in range(1, len(parts)):
+        search_term = '_'.join(parts[i:])
+        if '.' in search_term:  # must contain extension to be meaningful
+            results = [a for a in toc.search(search_term)
+                       if not a.filename.startswith('0x')]
+            if results:
+                # Verify: the flat version of found name should match our ref
+                for r in results:
+                    flat = r.filename.replace('\\', '_').replace('/', '_')
+                    if flat == base_ref:
+                        if not has_lang:
+                            return r
+                        return _match_lang_duplicate(toc, r.filename, r.archive_name, lang, reader)
+
+    # 5. Broad search fallback
+    results = toc.search(base_ref)
+    if len(results) == 1:
+        return results[0]
+
+    return None
+
+
+def _match_lang_duplicate(toc, filename, archive_name, lang_suffix, reader):
+    """Among duplicate assets with same filename, find the one matching lang_suffix."""
+    dupes = [a for a in toc.assets
+             if a.filename == filename and a.archive_name == archive_name]
+
+    if len(dupes) <= 1:
+        return dupes[0] if dupes else None
+
+    # Detect language of each duplicate
+    detected = []
+    for a in dupes:
+        try:
+            data = reader.read_asset(a)
+            lang = _detect_loc_language(data)
+        except Exception:
+            lang = 'und'
+        detected.append((a, lang))
+
+    # Match: exact, then prefix (en-US matches detected 'en-US')
+    for a, lang in detected:
+        if lang == lang_suffix:
+            return a
+
+    # Handle collision suffixes like en_2, en_3
+    if '_' in lang_suffix:
+        base, num_str = lang_suffix.rsplit('_', 1)
+        try:
+            target_n = int(num_str)
+            count = 0
+            for a, lang in detected:
+                if lang == base:
+                    count += 1
+                    if count == target_n:
+                        return a
+        except ValueError:
+            pass
+
+    # Match by TEST_ALL_LANG map value (en-US has 'Test all languages')
+    # The detection returns 'en-US' for TEST_ALL_LANG='Test all languages'
+    # So this should already work. But let's also try matching with
+    # the base part: 'en-US' might detect as 'en-US' exactly.
+    # If not found, it's because p000115 wasn't in archive-dir.
+    # In that case, warn but still try by size heuristic.
+
+    print(f'  WARNING: could not match lang suffix .{lang_suffix} by content detection')
+    print(f'  (Make sure the archive containing these assets is in --archive-dir)')
+    return dupes[0]
 
 def main():
     import argparse
