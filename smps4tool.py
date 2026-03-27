@@ -598,29 +598,61 @@ _LOC_KEY_OFF    = 0xA4EA55B2
 _LOC_TR_DATA    = 0x70A382B8
 _LOC_TR_OFF     = 0xF80DEEB4
 
+_LOC_MAGIC_LZ4     = 0x122BB0AB  # Format A: LZ4 compressed
+_LOC_MAGIC_WRAPPER = 0xBA20AFB5  # Format B: asset wrapper + raw DAT1
+
+def _loc_detect_format(raw: bytes) -> int:
+    """Return magic constant indicating the localization file format."""
+    return struct.unpack('<I', raw[0:4])[0]
+
 def _loc_decompress(path: str) -> bytes:
-    """Decompress an Insomniac asset file (LZ4 with 0x24-byte header)."""
-    try:
-        import lz4.block
-    except ImportError:
-        print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
-    with open(path,'rb') as f: raw = f.read()
-    magic = struct.unpack('<I', raw[0:4])[0]
-    rawsize = struct.unpack('<I', raw[4:8])[0]
-    compressed = raw[0x24:]
-    if len(compressed) == rawsize:
-        return compressed  # not compressed
-    return lz4.block.decompress(compressed, uncompressed_size=rawsize)
+    """Decompress an Insomniac localization file.
+
+    Format A (0x122BB0AB): LZ4-compressed DAT1 with 0x24-byte header.
+    Format B (0xBA20AFB5): asset wrapper (0x24-byte header) + raw DAT1, not compressed.
+    """
+    with open(path, 'rb') as f:
+        raw = f.read()
+    magic = _loc_detect_format(raw)
+
+    if magic == _LOC_MAGIC_LZ4:
+        # Format A — LZ4 compressed
+        try:
+            import lz4.block
+        except ImportError:
+            print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
+        rawsize = struct.unpack('<I', raw[4:8])[0]
+        compressed = raw[0x24:]
+        if len(compressed) == rawsize:
+            return compressed  # edge-case: stored uncompressed inside LZ4 header
+        return lz4.block.decompress(compressed, uncompressed_size=rawsize)
+
+    elif magic == _LOC_MAGIC_WRAPPER:
+        # Format B — wrapper header only, data is already raw DAT1
+        return raw[0x24:]
+
+    else:
+        raise ValueError(f'Unknown localization magic: 0x{magic:08X} in {path}')
 
 def _loc_compress(dec: bytes, magic: int) -> bytes:
-    """Compress data back into Insomniac asset format."""
-    try:
-        import lz4.block
-    except ImportError:
-        print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
-    compressed = lz4.block.compress(dec, store_size=False)
-    header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
-    return header + compressed
+    """Re-pack decompressed DAT1 data back into the original container format.
+
+    Format A (0x122BB0AB): LZ4-compress, write standard header.
+    Format B (0xBA20AFB5): raw DAT1 — prepend wrapper header only, no compression.
+    """
+    if magic == _LOC_MAGIC_WRAPPER:
+        # Format B: raw storage — raw_size == len(dec) (no LZ4)
+        header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
+        return header + dec
+    else:
+        # Format A (and default): LZ4 compress
+        try:
+            import lz4.block
+        except ImportError:
+            print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
+        compressed = lz4.block.compress(dec, store_size=False)
+        header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
+        return header + compressed
 
 def _loc_parse_sections(dec: bytes) -> dict:
     """Parse DAT1 sections, return {hash: (offset, size)}."""
@@ -633,10 +665,82 @@ def _loc_parse_sections(dec: bytes) -> dict:
         pos += 12
     return sections
 
+def _is_cp874_utf8(raw_bytes: bytes) -> bool:
+    """Heuristic: True if the byte sequence looks like CP874 bytes encoded as UTF-8 C2/C3 pairs.
+
+    Original Thai CP874 characters (0x80–0xFF) are stored as two-byte UTF-8 sequences
+    using only the 0xC2 and 0xC3 lead bytes.  Real UTF-8 Thai text uses 0xE0 lead bytes
+    (U+0E00–U+0E7F range).  If we see C2/C3 pairs but no E0+ lead bytes, it's CP874-as-UTF8.
+    """
+    i = 0
+    c2c3_pairs = 0
+    e0_plus = 0
+    while i < len(raw_bytes):
+        b = raw_bytes[i]
+        if b in (0xC2, 0xC3) and i + 1 < len(raw_bytes) and 0x80 <= raw_bytes[i+1] <= 0xBF:
+            c2c3_pairs += 1
+            i += 2
+        elif b >= 0xE0:
+            e0_plus += 1
+            i += 1
+        else:
+            i += 1
+    return c2c3_pairs > 0 and e0_plus == 0
+
+
+def _decode_cp874_from_utf8(raw_bytes: bytes) -> str:
+    """Convert C2/C3 UTF-8 pairs back to CP874 single bytes, then decode as CP874.
+
+    Thai CP874 byte b is stored as:
+      0x80–0xBF  →  C2 b
+      0xC0–0xFF  →  C3 (b-0x40)
+    """
+    original = bytearray()
+    i = 0
+    while i < len(raw_bytes):
+        b = raw_bytes[i]
+        if b == 0xC2 and i + 1 < len(raw_bytes) and 0x80 <= raw_bytes[i+1] <= 0xBF:
+            original.append(raw_bytes[i+1])          # 0x80–0xBF range
+            i += 2
+        elif b == 0xC3 and i + 1 < len(raw_bytes) and 0x80 <= raw_bytes[i+1] <= 0xBF:
+            original.append(raw_bytes[i+1] + 0x40)   # 0xC0–0xFF range
+            i += 2
+        else:
+            original.append(b)
+            i += 1
+    return original.decode('cp874', errors='replace')
+
+
+def _encode_thai_to_cp874_utf8(text: str) -> bytes:
+    """Convert a Thai string to CP874 bytes, then re-encode each high byte as C2/C3 pair.
+
+    This is the inverse of _decode_cp874_from_utf8 and produces the byte layout
+    the game expects for Thai text in localization files.
+    """
+    cp874_bytes = text.encode('cp874', errors='replace')
+    result = bytearray()
+    for b in cp874_bytes:
+        if b < 0x80:
+            result.append(b)
+        elif b <= 0xBF:
+            result.extend([0xC2, b])
+        else:
+            result.extend([0xC3, b - 0x40])
+    return bytes(result)
+
+
 def _loc_get_string(dec: bytes, base: int, off: int) -> str:
+    """Read a null-terminated string from dec at (base+off).
+
+    Auto-detects CP874-as-UTF8 encoding used in Thai localization files
+    and converts to readable Unicode.  Falls back to standard UTF-8.
+    """
     pos = base + off
     end = dec.index(b'\x00', pos)
-    return dec[pos:end].decode('utf-8', errors='replace')
+    raw = dec[pos:end]
+    if _is_cp874_utf8(raw):
+        return _decode_cp874_from_utf8(raw)
+    return raw.decode('utf-8', errors='replace')
 
 def loc_export(loc_path: str, csv_path: str) -> int:
     """Export localization asset → CSV (key, source, translation)."""
@@ -676,7 +780,7 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
 
     # Decompress original
     with open(loc_path, 'rb') as f: raw = f.read()
-    magic = struct.unpack('<I', raw[0:4])[0]
+    magic = _loc_detect_format(raw)
     dec = _loc_decompress(loc_path)
     sec = _loc_parse_sections(dec)
 
@@ -685,6 +789,25 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
     td_off, td_sz = sec[_LOC_TR_DATA]
     to_off, _ = sec[_LOC_TR_OFF]
     count = ko_sz // 4
+
+    # Detect whether the original file uses CP874-as-UTF8 encoding (Thai).
+    # Sample the first non-empty translation string to decide.
+    _use_cp874 = False
+    for _i in range(min(count, 200)):
+        _to = struct.unpack('<i', dec[to_off+_i*4:to_off+_i*4+4])[0]
+        if _to != 0:
+            _pos = td_off + _to
+            _end = dec.index(b'\x00', _pos)
+            if _is_cp874_utf8(dec[_pos:_end]):
+                _use_cp874 = True
+            break
+    if _use_cp874:
+        print('Detected CP874-as-UTF8 encoding (Thai) — strings will be re-encoded accordingly')
+
+    def _encode_value(text: str) -> bytes:
+        if _use_cp874:
+            return _encode_thai_to_cp874_utf8(text)
+        return text.encode('utf-8')
 
     # Build new translation data
     new_tr_data = bytearray()
@@ -706,7 +829,7 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
             new_tr_offsets.append(0)
         else:
             new_tr_offsets.append(len(new_tr_data))
-            new_tr_data.extend(value.encode('utf-8') + b'\x00')
+            new_tr_data.extend(_encode_value(value) + b'\x00')
 
     # Patch decompressed data: replace translation data + offsets
     buf = bytearray(dec)
@@ -1226,12 +1349,48 @@ def _match_lang_duplicate(toc, filename, archive_name, lang_suffix, reader):
         except ValueError:
             pass
 
-    # Match by TEST_ALL_LANG map value (en-US has 'Test all languages')
-    # The detection returns 'en-US' for TEST_ALL_LANG='Test all languages'
-    # So this should already work. But let's also try matching with
-    # the base part: 'en-US' might detect as 'en-US' exactly.
-    # If not found, it's because p000115 wasn't in archive-dir.
-    # In that case, warn but still try by size heuristic.
+    # All detected as 'und' — content detection failed.
+    # This happens when the loc file has been translated and TEST_ALL_LANG was
+    # also translated (e.g. to Thai), making it unrecognisable.
+    #
+    # Fallback: use archive_offset ordering.
+    # Duplicates are stored sequentially in the archive, so sorting by
+    # archive_offset gives a stable 0-based position index.
+    # The lang suffix encodes this position:
+    #   .en-US   → the 1st duplicate whose original detection was 'en-US'
+    #   .en-US_2 → the 2nd duplicate whose original detection was 'en-US'
+    # When all detect as 'und', treat lang_suffix as a positional hint:
+    #   strip the _N collision suffix to get the base lang code,
+    #   then use the N value (or 1 if absent) as the 1-based position
+    #   among duplicates sorted by archive_offset.
+
+    # Sort dupes by archive_offset for stable positional index
+    dupes_by_offset = sorted(dupes, key=lambda a: a.archive_offset)
+
+    # Parse base + ordinal from lang_suffix
+    base_lang = lang_suffix
+    ordinal = 1  # 1-based
+    if '_' in lang_suffix:
+        maybe_base, maybe_n = lang_suffix.rsplit('_', 1)
+        try:
+            ordinal = int(maybe_n)
+            base_lang = maybe_base
+        except ValueError:
+            pass
+
+    # Try: find the ordinal-th duplicate (1-based) by archive_offset order
+    # whose content-detected lang matches base_lang, OR just by position if all und
+    all_und = all(lang == 'und' for _, lang in detected)
+
+    if all_und:
+        # Pure positional fallback: ordinal = 1-based index into offset-sorted dupes
+        # en-US (no _N) → ordinal=1 → first by offset
+        # en-US_2       → ordinal=2 → second by offset
+        idx = ordinal - 1
+        if 0 <= idx < len(dupes_by_offset):
+            print(f'  NOTE: lang detection unavailable (translated file); '
+                  f'matching .{lang_suffix} by archive position {ordinal}')
+            return dupes_by_offset[idx]
 
     print(f'  WARNING: could not match lang suffix .{lang_suffix} by content detection')
     print(f'  (Make sure the archive containing these assets is in --archive-dir)')

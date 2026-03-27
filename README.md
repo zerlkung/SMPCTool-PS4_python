@@ -8,6 +8,19 @@ Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 
 ---
 
+## ⚠️ Work In Progress
+
+| Feature | Status |
+|---|---|
+| Extract / repack / patch | ✅ Working |
+| Font replacement (`0xB1BC4746124FA7ED`) | ✅ Working — verified in-game |
+| Localization export (`loc-export`) | ✅ Working |
+| Localization import (`loc-import`) | 🚧 WIP — pipeline complete, in-game display under investigation |
+| CP874 / Thai encoding support | ✅ Implemented |
+| Format B (wrapper + raw DAT1) | ✅ Implemented |
+
+---
+
 ## Requirements
 
 - Python 3.10+
@@ -38,30 +51,34 @@ Localization files with duplicate names (32 languages) are automatically detecte
 
 ### `patch` — Replace specific assets (lightweight modding)
 ```bash
-# Patch single file — creates small mod archive + new TOC
-python3 smps4tool.py patch --archive-dir /game --mod-name mod_localization \
-    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
+# Patch localization — patches both en-copy (slot 0) and en-US (slot 1)
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
+    --files "localization_localization_all.localization.en-US=modified.loc" \
+            "localization_localization_all.localization.en-US_2=modified.loc" \
+    --output-toc toc.new
 
-# Patch multiple files at once
-python3 smps4tool.py patch --archive-dir /game --mod-name mod_pack \
-    --files "0xBE55D94F171BF8DE=new_loc.bin" "0xB1BC4746124FA7ED=new_font.gfx" \
+# Patch font + localization together
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
+    --files "localization_localization_all.localization.en-US=modified.loc" \
+            "localization_localization_all.localization.en-US_2=modified.loc" \
+            "0xB1BC4746124FA7ED=myfont.gfx" \
     --output-toc toc.new
 ```
 
-Creates a small archive with ONLY modified files, then patches the TOC to redirect those assets. All other 657,000+ assets remain untouched. No need to repack the entire archive.
+Creates a small archive with ONLY modified files, then patches the TOC to redirect those assets. All other 657,000+ assets remain untouched.
+
+**Note:** When patching translated localization files, `p000115` must be present in `--archive-dir` for language detection. If it is not available, the tool falls back to **archive-offset ordering** — `.en-US` → 1st copy, `.en-US_2` → 2nd copy.
 
 ### `repack` / `repack-dir` — Rebuild entire archive
 ```bash
-# From original archive
 python3 smps4tool.py repack --archive-dir /game --archive p000045 \
     --output-archive p000045_new --output-toc toc.new --skip-hex
 
-# From extracted directory (modified files + fallback to original)
 python3 smps4tool.py repack-dir --archive-dir /game --archive p000045 \
     --dir extracted/ --output-archive p000045_new --output-toc toc.new --flat
 ```
 
-### `loc-export` / `loc-import` — Localization translation
+### `loc-export` / `loc-import` — Localization translation ⚠️ WIP
 ```bash
 # Export to CSV (54,010 strings)
 python3 smps4tool.py loc-export localization_all.localization.en-US strings.csv
@@ -69,6 +86,10 @@ python3 smps4tool.py loc-export localization_all.localization.en-US strings.csv
 # Import translated CSV back
 python3 smps4tool.py loc-import original.localization translated.csv output.localization
 ```
+
+**Known issues:**
+- If the source CSV was saved in CP874/TIS-620 encoding instead of UTF-8, tone marks will be garbled (ฃ→่, ฅ→้, ๎→็, ๏→ี, ๚→๊, ๛→๋). Use `fix_thai_chars.py` to repair after import.
+- Characters that become U+FFFD during import cannot be auto-fixed — re-save the CSV as UTF-8 before importing.
 
 ### Other commands
 
@@ -92,17 +113,25 @@ python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/
 # 2. Export to CSV
 python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
-# 3. Translate: fill "translation" column in CSV
+# 3. Translate: fill "translation" column in strings.csv
+#    IMPORTANT: save as UTF-8 encoding (not CP874/TIS-620)
 
 # 4. Import back
 python3 smps4tool.py loc-import \
-    loc/localization_localization_all.localization.en-US strings.csv modified.localization
+    loc/localization_localization_all.localization.en-US \
+    strings.csv \
+    modified.loc
 
-# 5. Patch into game (lightweight — no full repack needed)
-python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
-    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
+# 5. (Optional) Fix Thai keyboard-mapping errors if tone marks are garbled
+python3 fix_thai_chars.py modified.loc fixed.loc
 
-# 6. Copy toc.new → toc, mod_translation stays in game directory
+# 6. Patch into game
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
+    --files "localization_localization_all.localization.en-US=fixed.loc" \
+            "localization_localization_all.localization.en-US_2=fixed.loc" \
+    --output-toc toc.new
+
+# 7. Copy toc.new → toc, place modmycon in game archive directory
 ```
 
 ---
@@ -117,15 +146,15 @@ python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
 
 Each copy is LZ4-compressed DAT1 with key/translation string tables (54,010 entries). Language is auto-detected via `TEST_ALL_LANG` key inside each file.
 
-Supported languages: en-US, en-GB, ja, fr, fr-CA, es, es-LA, de, it, nl, pt, pt-BR, ru, ko, zh-Hant, zh-Hans, fi, sv, da, no, pl, cs, el, tr, ar, ro, hu + 5 empty/fallback slots.
+Language slots: en-US (slot 1), en-GB (2), da (3), nl (4), fi (5), fr (6), de (7), it (8), ja (9), ko (10), no (11), pl (12), pt-BR (13), ru (14), es (15), sv (16), pt (18), en-GB copy (19), es-LA (21), zh-Hans (22), zh-Hant (23), fr-CA (24), cs (25), hu (26), el (27).
 
 ### Fonts (GFX/Scaleform)
 
-| Asset | Archive | Asset ID | Format | Note |
+| Asset | Archive | Asset ID | Format | Status |
 |---|---|---|---|---|
-| Font_LatinAS3 (Azbuka Pro Bold Italic) | `p000026` | `0xB1BC4746124FA7ED` | GFX (Scaleform) | Main UI font, 438 KB |
+| Font_LatinAS3 (Azbuka Pro Bold Italic) | `p000026` | `0xB1BC4746124FA7ED` | GFX | ✅ Working in-game |
 
-Additional font candidates in `p000026` (hex-ID assets, 100–500 KB, likely GFX format for CJK/Cyrillic/Arabic scripts):
+Additional font candidates in `p000026` (hex-ID assets, likely GFX, CJK/Cyrillic/Arabic):
 
 ```
 0x84E2C94F88EE239B    257 KB
@@ -137,7 +166,36 @@ Additional font candidates in `p000026` (hex-ID assets, 100–500 KB, likely GFX
 0xA2700DBFAB093950    153 KB
 ```
 
-GFX files start with magic bytes `47 46 58 0E` ("GFX"). Font glyphs are embedded as vector shapes inside the SWF-based GFX container.
+---
+
+## Localization File Formats
+
+**Format A — LZ4 compressed** (original game files)
+```
+0x00  AB B0 2B 12  ← LZ4 magic (0x122BB0AB)
+0x04  raw_size (uint32)
+0x08  padding (28 bytes)
+0x24  LZ4 compressed DAT1 data
+```
+
+**Format B — Wrapper + raw DAT1** (some translated files)
+```
+0x00  B5 AF 20 BA  ← Asset wrapper magic (0xBA20AFB5)
+0x04  raw_size (uint32, == file_size - 0x24, NOT compressed)
+0x08  padding (28 bytes)
+0x24  DAT1 directly (raw, not LZ4)
+```
+
+Both formats are handled automatically.
+
+### DAT1 Section IDs
+
+| Section ID | Contents |
+|---|---|
+| `0x4D73CEBD` | Key strings |
+| `0xA4EA55B2` | Key offsets (int[]) |
+| `0x70A382B8` | Translation strings |
+| `0xF80DEEB4` | Translation offsets (int[]) |
 
 ---
 
@@ -151,23 +209,16 @@ p000026, p000027, ...       ← Small archives (localization, configs, fonts)
 a00s019.us, a00s020.fr, ... ← Locale-specific archives
 ```
 
-### Localization format (LZ4 + DAT1)
-
-| Section ID | Contents |
-|---|---|
-| `0x4D73CEBD` | Key strings |
-| `0xA4EA55B2` | Key offsets (int[]) |
-| `0x70A382B8` | Translation strings |
-| `0xF80DEEB4` | Translation offsets (int[]) |
-
-Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/InsomniacArchive). Same format on PS4 and PC.
-
 ---
 
 ## Bugfixes
 
 - **Archive name truncation** — Names longer than 8 bytes were cut off (9 locale-suffixed archives affected). Fixed: null-terminated read.
 - **Language detection** — PS4 system language index didn't match game's actual order. Fixed: content-based detection via `TEST_ALL_LANG` key. 32/32 verified correct.
+- **Wrapper auto-strip** — Files with `0xBA20AFB5` wrapper are auto-stripped in `patch` command.
+- **Format B support** — `loc-export`/`loc-import` now handle both LZ4 (Format A) and raw DAT1 (Format B) localization files.
+- **CP874 encoding** — `loc-export` auto-detects and decodes CP874-as-UTF8 pairs. `loc-import` auto-detects and re-encodes correctly.
+- **Translated file detection** — `_match_lang_duplicate` falls back to archive-offset ordering when `TEST_ALL_LANG` has been translated (making content-based detection unavailable).
 
 ---
 
@@ -176,6 +227,7 @@ Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/Inso
 | File | Description |
 |---|---|
 | `smps4tool.py` | Main tool |
+| `fix_thai_chars.py` | Repair Thai keyboard-mapping errors in imported loc files |
 | `PS4AssetHashes.txt` | Pre-built hash DB (386,344 entries, 44 MB) |
 | `SMPS4HashTool.exe` | Original native hash tool (reference only) |
 
@@ -200,6 +252,17 @@ Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/Inso
 
 ---
 
+## ⚠️ สถานะการพัฒนา
+
+| ฟีเจอร์ | สถานะ |
+|---|---|
+| Extract / repack / patch | ✅ ใช้งานได้ |
+| Font replacement | ✅ ใช้งานได้ — ทดสอบในเกมแล้ว |
+| loc-export | ✅ ใช้งานได้ |
+| loc-import (นำเข้าการแปล) | 🚧 WIP — pipeline ครบแล้ว อยู่ระหว่างตรวจสอบการแสดงผลในเกม |
+
+---
+
 ### ติดตั้ง
 
 - Python 3.10+
@@ -220,10 +283,10 @@ python3 smps4tool.py info
 |---|---|
 | `extract` | Extract asset (`--skip-hex`, `--flat`, auto lang suffix) |
 | `patch` | แทนที่เฉพาะไฟล์ที่แก้ → mod archive เล็ก + TOC ใหม่ |
-| `repack` | สร้าง archive ใหม่จาก original (`--skip-hex`) |
-| `repack-dir` | สร้าง archive ใหม่จาก directory (`--flat`) |
+| `repack` | สร้าง archive ใหม่จาก original |
+| `repack-dir` | สร้าง archive ใหม่จาก directory |
 | `loc-export` | แปลง localization → CSV (54,010 strings) |
-| `loc-import` | นำเข้า CSV ที่แปลแล้ว → localization ใหม่ |
+| `loc-import` | นำเข้า CSV ที่แปลแล้ว → localization ใหม่ ⚠️ WIP |
 | `info` | ดูข้อมูล TOC |
 | `list` | ค้นหา asset |
 | `build-hashdb` | สร้าง hash DB จาก dag |
@@ -233,41 +296,30 @@ python3 smps4tool.py info
 
 ---
 
-### `patch` — แทนที่เฉพาะไฟล์ (ไม่ต้อง repack ทั้ง archive)
-
-```bash
-# สร้าง mod archive เล็ก ๆ + TOC ใหม่
-python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
-    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
-
-# patch หลายไฟล์พร้อมกัน
-python3 smps4tool.py patch --archive-dir /game --mod-name mod_pack \
-    --files "0xBE55D94F171BF8DE=new_loc.bin" "0xB1BC4746124FA7ED=new_font.gfx" \
-    --output-toc toc.new
-```
-
-สร้าง archive เล็ก ๆ ที่มีเฉพาะไฟล์ที่แก้ แล้ว patch TOC ให้ชี้ไป asset อื่น 657,000+ ตัวยังอ่านจาก archive เดิม
-
----
-
 ### ขั้นตอนแปลภาษา
 
 ```bash
-# 1. Extract localization
+# 1. Extract
 python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/ --flat
 
 # 2. Export CSV
 python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
-# 3. แปลภาษาใน CSV (คอลัมน์ translation)
+# 3. แปลภาษาใน CSV (คอลัมน์ translation) — บันทึกเป็น UTF-8 เท่านั้น!
 
-# 4. Import กลับ
+# 4. Import
 python3 smps4tool.py loc-import \
-    loc/localization_localization_all.localization.en-US strings.csv modified.localization
+    loc/localization_localization_all.localization.en-US \
+    strings.csv modified.loc
 
-# 5. Patch เข้าเกม (ไม่ต้อง repack ทั้ง archive)
-python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
-    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
+# 5. แก้ tone mark ถ้าผิด (ฃ→่, ฅ→้, ๎→็)
+python3 fix_thai_chars.py modified.loc fixed.loc
+
+# 6. Patch เข้าเกม
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
+    --files "localization_localization_all.localization.en-US=fixed.loc" \
+            "localization_localization_all.localization.en-US_2=fixed.loc" \
+    --output-toc toc.new
 ```
 
 ---
@@ -278,7 +330,6 @@ python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
 |---|---|---|---|
 | Localization (ข้อความ) | `p000115` | `0xBE55D94F171BF8DE` | 32 ภาษา, LZ4+DAT1 |
 | Font หลัก (Azbuka Pro) | `p000026` | `0xB1BC4746124FA7ED` | GFX/Scaleform, 438 KB |
-| Font อื่น ๆ (CJK ฯลฯ) | `p000026` | hex IDs 100-500 KB | GFX format (`47 46 58 0E`) |
 
 ---
 
@@ -286,6 +337,9 @@ python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
 
 - **Archive name truncation** — ชื่อยาวกว่า 8 bytes ถูกตัด → แก้แล้ว
 - **Language detection** — PS4 index ไม่ตรง → แก้เป็นตรวจจับจากเนื้อหา `TEST_ALL_LANG` (32/32 ถูกต้อง)
+- **Format B support** — รองรับ localization format B (wrapper + raw DAT1)
+- **CP874 encoding** — auto-detect และ decode/encode ภาษาไทยที่เก็บเป็น CP874-as-UTF8
+- **Translated file detection** — fallback ด้วย archive-offset ordering เมื่อ `TEST_ALL_LANG` ถูกแปลแล้ว
 
 ---
 
@@ -294,5 +348,5 @@ python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
 - **[jedijosh920](https://www.nexusmods.com/marvelsspidermanremastered/mods/51)** — SMPCTool ต้นฉบับ (PC)
 - **[Phew](https://github.com/Phew/SMPCTool-src)** — ซอร์สโค้ด SMPCTool
 - **[zerlkung](https://github.com/zerlkung/SMPCTool-PS4)** — SMPCTool-PS4 เวอร์ชัน C#
-- **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — InsomniacArchive & SpidermanLocalizationTool (localization DAT1 section IDs, LZ4 asset format, CSV export/import workflow)
+- **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — InsomniacArchive & SpidermanLocalizationTool
 - Hash algorithm reverse-engineered จาก SMPS4HashTool.exe
