@@ -18,205 +18,156 @@ Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 ## First-Time Setup
 
 ```bash
-# Step 1: Build hash DB from dag (run once — ~12 sec, produces 44 MB file)
-python3 smps4tool.py build-hashdb --dag dag
-
-# Step 2: Verify
-python3 smps4tool.py info
+python3 smps4tool.py build-hashdb --dag dag    # run once (~12 sec, 44 MB)
+python3 smps4tool.py info                       # verify
 ```
 
-> The included `PS4AssetHashes.txt` is a pre-built hash DB (386,344 entries). You can skip step 1 if you already have it.
+> The included `PS4AssetHashes.txt` is a pre-built hash DB (386,344 entries). You can skip build-hashdb if you already have it.
 
 ---
 
 ## Commands
 
-### `info` — TOC summary
-```bash
-python3 smps4tool.py info
-```
-
-### `list` — Search assets
-```bash
-python3 smps4tool.py list --search "vulture"
-python3 smps4tool.py list --archive g00s000
-python3 smps4tool.py list --archive g00s008 --named-only --limit 20
-```
-
 ### `extract` — Extract assets
 ```bash
-# Extract entire archive
 python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/
-
-# Extract by name / ID / search
-python3 smps4tool.py extract --archive-dir /game --name "characters\hero\hero_spiderman\hero_spiderman.model" --output out/
-python3 smps4tool.py extract --archive-dir /game --id 0x800035F1EBDCBCEC --output out/
-python3 smps4tool.py extract --archive-dir /game --search "npc_vulture" --output out/
-
-# Flat output (no subdirectories)
-python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --flat
-
-# Skip unnamed assets (hex IDs only)
-python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --skip-hex
+python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --flat --skip-hex
 ```
 
-**Localization language detection**: When extracting archives with duplicate filenames (e.g. `localization_all.localization` × 32 languages), the tool automatically detects the actual language from file content using the `TEST_ALL_LANG` key inside each file, and appends the correct suffix:
+Localization files with duplicate names (32 languages) are automatically detected from content and suffixed: `.en-US`, `.ja`, `.fr`, `.de`, `.ko`, `.es-LA`, `.pt-BR`, etc. (32/32 verified correct)
 
-```
-localization_all.localization.en-US     ← English (US)
-localization_all.localization.ja        ← Japanese
-localization_all.localization.fr        ← French
-localization_all.localization.de        ← German
-localization_all.localization.zh-Hant   ← Chinese Traditional
-localization_all.localization.ko        ← Korean
-localization_all.localization.es-LA     ← Spanish (Latin America)
-localization_all.localization.pt-BR     ← Portuguese (Brazil)
-...
-```
-
-All 32 language variants are correctly identified, including distinguishing between regional variants (en-US/en-GB, fr/fr-CA, es/es-LA, pt/pt-BR).
-
-### `repack` — Rebuild archive from original
+### `patch` — Replace specific assets (lightweight modding)
 ```bash
-python3 smps4tool.py repack --archive-dir /game --archive p000045 \
-    --output-archive p000045_new --output-toc toc.new
+# Patch single file — creates small mod archive + new TOC
+python3 smps4tool.py patch --archive-dir /game --mod-name mod_localization \
+    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
 
-# Exclude hex-ID assets
+# Patch multiple files at once
+python3 smps4tool.py patch --archive-dir /game --mod-name mod_pack \
+    --files "0xBE55D94F171BF8DE=new_loc.bin" "0xB1BC4746124FA7ED=new_font.gfx" \
+    --output-toc toc.new
+```
+
+Creates a small archive with ONLY modified files, then patches the TOC to redirect those assets. All other 657,000+ assets remain untouched. No need to repack the entire archive.
+
+### `repack` / `repack-dir` — Rebuild entire archive
+```bash
+# From original archive
 python3 smps4tool.py repack --archive-dir /game --archive p000045 \
     --output-archive p000045_new --output-toc toc.new --skip-hex
-```
 
-### `repack-dir` — Rebuild archive from extracted directory
-```bash
+# From extracted directory (modified files + fallback to original)
 python3 smps4tool.py repack-dir --archive-dir /game --archive p000045 \
     --dir extracted/ --output-archive p000045_new --output-toc toc.new --flat
 ```
 
-Files not found in the directory are read from the original archive. Language suffixes on localization files are stripped automatically during repack.
-
-### `loc-export` — Export localization → CSV
+### `loc-export` / `loc-import` — Localization translation
 ```bash
+# Export to CSV (54,010 strings)
 python3 smps4tool.py loc-export localization_all.localization.en-US strings.csv
-# Exported 54,010 strings to strings.csv
-```
 
-Output CSV has 3 columns: `key`, `source`, `translation`. Open in Excel or Google Sheets and fill in the `translation` column.
-
-### `loc-import` — Import translated CSV → localization file
-```bash
+# Import translated CSV back
 python3 smps4tool.py loc-import original.localization translated.csv output.localization
 ```
-
-Only rows with a non-empty `translation` column are imported. All other strings keep their original values.
 
 ### Other commands
 
 | Command | Description |
 |---|---|
-| `build-hashdb` | Build hash DB from dag (run once) |
+| `info` | TOC summary |
+| `list` | Search assets (`--search`, `--archive`, `--named-only`, `--limit`) |
+| `build-hashdb` | Build hash DB from dag |
 | `csv` | Export full asset list to CSV |
-| `hash` | Compute CRC-64 hash for a path string |
+| `hash` | Compute CRC-64 hash |
 | `dag` | Search DAG asset names |
 
 ---
 
 ## Translation Workflow
 
-Full workflow to translate the game into another language:
-
 ```bash
-# 1. Extract localization files from archive
+# 1. Extract localization files
 python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/ --flat
 
-# 2. Export English strings to CSV (54,010 strings)
+# 2. Export to CSV
 python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
-# 3. Translate: fill in the "translation" column in strings.csv
+# 3. Translate: fill "translation" column in CSV
 
-# 4. Import translations back into the English localization file
+# 4. Import back
 python3 smps4tool.py loc-import \
-    loc/localization_localization_all.localization.en-US \
-    strings.csv \
-    loc/localization_localization_all.localization.en-US
+    loc/localization_localization_all.localization.en-US strings.csv modified.localization
 
-# 5. Repack archive + TOC
-python3 smps4tool.py repack-dir --archive-dir /game --archive p000115 \
-    --dir loc/ --output-archive p000115_new --output-toc toc.new --flat
+# 5. Patch into game (lightweight — no full repack needed)
+python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
+    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
+
+# 6. Copy toc.new → toc, mod_translation stays in game directory
 ```
 
 ---
 
-## Python Library Usage
+## Known Asset Locations
 
-```python
-from smps4tool import TOC, ArchiveReader, sm_hash, loc_export, loc_import
+### Localization (text strings)
 
-# Load TOC
-toc = TOC('toc', hashdb_path='PS4AssetHashes.txt')
-toc.load()
+| Asset | Archive | Asset ID | Note |
+|---|---|---|---|
+| `localization\localization_all.localization` | `p000115` | `0xBE55D94F171BF8DE` | 32 copies, one per language |
 
-# Find and read an asset
-asset = toc.get_by_name(r'characters\hero\hero_spiderman\hero_spiderman.model')
-reader = ArchiveReader('/path/to/game')
-data = reader.read_asset(asset)
+Each copy is LZ4-compressed DAT1 with key/translation string tables (54,010 entries). Language is auto-detected via `TEST_ALL_LANG` key inside each file.
 
-# Search
-for a in toc.search('vulture'):
-    print(a.filename)
+Supported languages: en-US, en-GB, ja, fr, fr-CA, es, es-LA, de, it, nl, pt, pt-BR, ru, ko, zh-Hant, zh-Hans, fi, sv, da, no, pl, cs, el, tr, ar, ro, hu + 5 empty/fallback slots.
 
-# Hash
-h = sm_hash(r'characters\hero\hero_spiderman\hero_spiderman.model')
-print(f'0x{h:016X}')
+### Fonts (GFX/Scaleform)
 
-# Localization
-loc_export('localization.en-US', 'strings.csv')
-loc_import('localization.en-US', 'translated.csv', 'localization_new.en-US')
+| Asset | Archive | Asset ID | Format | Note |
+|---|---|---|---|---|
+| Font_LatinAS3 (Azbuka Pro Bold Italic) | `p000026` | `0xB1BC4746124FA7ED` | GFX (Scaleform) | Main UI font, 438 KB |
+
+Additional font candidates in `p000026` (hex-ID assets, 100–500 KB, likely GFX format for CJK/Cyrillic/Arabic scripts):
+
 ```
+0x84E2C94F88EE239B    257 KB
+0x9D1311A64950EC6F    248 KB
+0x92BDFC3963702AFF    247 KB
+0x9876B52CAF4F51E0    246 KB
+0xAD8C5B044177EEF6    244 KB
+0x9A03FE065EC606AF    154 KB
+0xA2700DBFAB093950    153 KB
+```
+
+GFX files start with magic bytes `47 46 58 0E` ("GFX"). Font glyphs are embedded as vector shapes inside the SWF-based GFX container.
 
 ---
 
 ## PS4 File Structure
 
 ```
-toc                         ← Master index of all assets
-  Magic: 0xAF12AF77 → zlib → DAT1 (6 sections, stride 24 bytes)
-
-dag                         ← Asset name strings (386k names)
-  Magic: 0x891F77AF → zlib → null-terminated strings from offset 102
-
+toc                         ← Master index (zlib → DAT1, 6 sections, stride 24)
+dag                         ← Asset names (386k strings)
 g00s000, g00s001, ...       ← Large archives (gameplay, textures, models)
-p000026, p000027, ...       ← Small archives (localization, configs)
+p000026, p000027, ...       ← Small archives (localization, configs, fonts)
 a00s019.us, a00s020.fr, ... ← Locale-specific archives
-
-Archive format: Raw concat   (PC uses RDPA + custom LZ)
-Asset format:   LZ4 header (0x24 bytes) + compressed DAT1 content
 ```
 
-### Localization format
+### Localization format (LZ4 + DAT1)
 
-Each `.localization` asset is LZ4-compressed DAT1 containing:
+| Section ID | Contents |
+|---|---|
+| `0x4D73CEBD` | Key strings |
+| `0xA4EA55B2` | Key offsets (int[]) |
+| `0x70A382B8` | Translation strings |
+| `0xF80DEEB4` | Translation offsets (int[]) |
 
-| Section ID | Type | Contents |
-|---|---|---|
-| `0x4D73CEBD` | String data | Key strings (asset path keys) |
-| `0xA4EA55B2` | int[] | Key offsets |
-| `0x70A382B8` | String data | Translation strings |
-| `0xF80DEEB4` | int[] | Translation offsets |
-
-Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/InsomniacArchive) format. Works with both PS4 and PC localization files (same LZ4+DAT1 structure).
-
----
-
-## EN Font Location
-0xB1BC4746124FA7ED in p000026 Archive! GFX format.
+Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/InsomniacArchive). Same format on PS4 and PC.
 
 ---
 
 ## Bugfixes
 
-**Archive name truncation** — Original read archive names as fixed 8 bytes. Archives with longer names (`a00s019.us`, `a00s020.fr`, etc.) were truncated and could not be found. Fixed by reading null-terminated strings.
-
-**Language detection** — Originally used PS4 system language index which did not match the actual language order in game archives. Now detects language from file content using the `TEST_ALL_LANG` key inside each localization asset. Verified 32/32 files correctly identified.
+- **Archive name truncation** — Names longer than 8 bytes were cut off (9 locale-suffixed archives affected). Fixed: null-terminated read.
+- **Language detection** — PS4 system language index didn't match game's actual order. Fixed: content-based detection via `TEST_ALL_LANG` key. 32/32 verified correct.
 
 ---
 
@@ -257,8 +208,8 @@ Compatible with [team-waldo/InsomniacArchive](https://github.com/team-waldo/Inso
 ### ใช้งานครั้งแรก
 
 ```bash
-python3 smps4tool.py build-hashdb --dag dag    # รันครั้งเดียว
-python3 smps4tool.py info                       # ตรวจสอบ
+python3 smps4tool.py build-hashdb --dag dag
+python3 smps4tool.py info
 ```
 
 ---
@@ -267,69 +218,74 @@ python3 smps4tool.py info                       # ตรวจสอบ
 
 | คำสั่ง | คำอธิบาย |
 |---|---|
-| `build-hashdb` | สร้าง hash DB จาก dag (รันครั้งเดียว) |
-| `info` | ดูข้อมูล TOC |
-| `list` | ค้นหา asset (`--search`, `--archive`, `--named-only`) |
-| `extract` | Extract asset (`--skip-hex`, `--flat`) |
+| `extract` | Extract asset (`--skip-hex`, `--flat`, auto lang suffix) |
+| `patch` | แทนที่เฉพาะไฟล์ที่แก้ → mod archive เล็ก + TOC ใหม่ |
 | `repack` | สร้าง archive ใหม่จาก original (`--skip-hex`) |
 | `repack-dir` | สร้าง archive ใหม่จาก directory (`--flat`) |
-| `loc-export` | แปลง localization → CSV สำหรับแปลภาษา |
+| `loc-export` | แปลง localization → CSV (54,010 strings) |
 | `loc-import` | นำเข้า CSV ที่แปลแล้ว → localization ใหม่ |
-| `csv` | Export รายการ asset ทั้งหมดเป็น CSV |
+| `info` | ดูข้อมูล TOC |
+| `list` | ค้นหา asset |
+| `build-hashdb` | สร้าง hash DB จาก dag |
+| `csv` | Export รายการ asset เป็น CSV |
 | `hash` | คำนวณ CRC-64 hash |
-| `dag` | ค้นหาชื่อ asset จาก dag |
+| `dag` | ค้นหาชื่อจาก dag |
 
 ---
 
-### ตรวจจับภาษาอัตโนมัติ
+### `patch` — แทนที่เฉพาะไฟล์ (ไม่ต้อง repack ทั้ง archive)
 
-เมื่อ extract ไฟล์ localization ที่ชื่อซ้ำกัน (32 ภาษา) tool จะตรวจจับภาษาจริงจากเนื้อหาไฟล์โดยอ่าน key `TEST_ALL_LANG` ที่อยู่ภายใน แล้วตั้งชื่อ suffix ให้ถูกต้อง:
+```bash
+# สร้าง mod archive เล็ก ๆ + TOC ใหม่
+python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
+    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
 
-```
-localization_all.localization.en-US     ← English (US)
-localization_all.localization.en-GB     ← English (UK)
-localization_all.localization.ja        ← Japanese
-localization_all.localization.fr        ← French
-localization_all.localization.fr-CA     ← French (Canada)
-localization_all.localization.es        ← Spanish
-localization_all.localization.es-LA     ← Spanish (Latin America)
-localization_all.localization.pt        ← Portuguese
-localization_all.localization.pt-BR     ← Portuguese (Brazil)
-...
+# patch หลายไฟล์พร้อมกัน
+python3 smps4tool.py patch --archive-dir /game --mod-name mod_pack \
+    --files "0xBE55D94F171BF8DE=new_loc.bin" "0xB1BC4746124FA7ED=new_font.gfx" \
+    --output-toc toc.new
 ```
 
-ทดสอบแล้ว 32/32 ไฟล์ถูกต้อง รวมถึงแยก regional variants ได้ (en-US/en-GB, fr/fr-CA, es/es-LA, pt/pt-BR)
+สร้าง archive เล็ก ๆ ที่มีเฉพาะไฟล์ที่แก้ แล้ว patch TOC ให้ชี้ไป asset อื่น 657,000+ ตัวยังอ่านจาก archive เดิม
 
 ---
 
 ### ขั้นตอนแปลภาษา
 
 ```bash
-# 1. Extract ไฟล์ localization จาก archive p000115
+# 1. Extract localization
 python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/ --flat
 
-# 2. Export เป็น CSV (54,010 strings)
+# 2. Export CSV
 python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
-# 3. แปลภาษา: เปิด strings.csv ใน Excel แล้วใส่คำแปลในคอลัมน์ "translation"
+# 3. แปลภาษาใน CSV (คอลัมน์ translation)
 
 # 4. Import กลับ
 python3 smps4tool.py loc-import \
-    loc/localization_localization_all.localization.en-US \
-    strings.csv \
-    loc/localization_localization_all.localization.en-US
+    loc/localization_localization_all.localization.en-US strings.csv modified.localization
 
-# 5. Repack archive + TOC
-python3 smps4tool.py repack-dir --archive-dir /game --archive p000115 \
-    --dir loc/ --output-archive p000115_new --output-toc toc.new --flat
+# 5. Patch เข้าเกม (ไม่ต้อง repack ทั้ง archive)
+python3 smps4tool.py patch --archive-dir /game --mod-name mod_translation \
+    --files "0xBE55D94F171BF8DE=modified.localization" --output-toc toc.new
 ```
+
+---
+
+### ตำแหน่งไฟล์สำคัญ
+
+| ไฟล์ | Archive | Asset ID | หมายเหตุ |
+|---|---|---|---|
+| Localization (ข้อความ) | `p000115` | `0xBE55D94F171BF8DE` | 32 ภาษา, LZ4+DAT1 |
+| Font หลัก (Azbuka Pro) | `p000026` | `0xB1BC4746124FA7ED` | GFX/Scaleform, 438 KB |
+| Font อื่น ๆ (CJK ฯลฯ) | `p000026` | hex IDs 100-500 KB | GFX format (`47 46 58 0E`) |
 
 ---
 
 ### Bugfixes
 
-- **Archive name truncation** — ชื่อ archive ที่ยาวกว่า 8 ตัวอักษร (เช่น `a00s019.us`) ถูกตัด → แก้แล้ว
-- **Language detection** — เดิมใช้ PS4 system language index ซึ่งไม่ตรงกับลำดับจริง → แก้เป็นตรวจจับจากเนื้อหาไฟล์ด้วย `TEST_ALL_LANG` key ทดสอบ 32/32 ถูกต้อง
+- **Archive name truncation** — ชื่อยาวกว่า 8 bytes ถูกตัด → แก้แล้ว
+- **Language detection** — PS4 index ไม่ตรง → แก้เป็นตรวจจับจากเนื้อหา `TEST_ALL_LANG` (32/32 ถูกต้อง)
 
 ---
 
@@ -338,5 +294,5 @@ python3 smps4tool.py repack-dir --archive-dir /game --archive p000115 \
 - **[jedijosh920](https://www.nexusmods.com/marvelsspidermanremastered/mods/51)** — SMPCTool ต้นฉบับ (PC)
 - **[Phew](https://github.com/Phew/SMPCTool-src)** — ซอร์สโค้ด SMPCTool
 - **[zerlkung](https://github.com/zerlkung/SMPCTool-PS4)** — SMPCTool-PS4 เวอร์ชัน C#
-- **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — InsomniacArchive & SpidermanLocalizationTool (อ้างอิง section IDs ของ localization DAT1, LZ4 asset format, workflow export/import CSV)
+- **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — InsomniacArchive & SpidermanLocalizationTool (localization DAT1 section IDs, LZ4 asset format, CSV export/import workflow)
 - Hash algorithm reverse-engineered จาก SMPS4HashTool.exe
