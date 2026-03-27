@@ -1096,15 +1096,22 @@ def cmd_patch(args):
     if not pairs:
         print('No files to patch.'); return
 
-    # Validate: reject files with asset wrapper (0xBA20AFB5)
+    # Auto-strip asset wrapper (0xBA20AFB5) if present
+    stripped_pairs = []
     for asset, file_path in pairs:
         with open(file_path, 'rb') as f:
             header = f.read(4)
         if len(header) >= 4 and struct.unpack('<I', header)[0] == 0xBA20AFB5:
-            print(f'  ERROR: {os.path.basename(file_path)} has asset wrapper (0xBA20AFB5)')
-            print(f'  Files must NOT include the wrapper header.')
-            print(f'  Use loc-import output or strip first 0x28 bytes.')
-            return
+            print(f'  → {os.path.basename(file_path)}: asset wrapper detected, stripping 0x28 header automatically')
+            import tempfile
+            raw = open(file_path, 'rb').read()
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.stripped')
+            tmp.write(raw[0x28:])
+            tmp.close()
+            stripped_pairs.append((asset, tmp.name))
+        else:
+            stripped_pairs.append((asset, file_path))
+    pairs = stripped_pairs
 
     # Register mod archive in TOC ArchiveFiles section
     new_idx = toc.add_archive(mod_name)
