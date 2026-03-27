@@ -473,12 +473,13 @@ class TOC:
     def by_archive(self, name: str) -> list[AssetEntry]:
         return [a for a in self.assets if a.archive_name == name]
 
-    def export_csv(self, path: str) -> None:
+    def export_csv(self, path: str, reader=None) -> None:
         with open(path,'w',newline='',encoding='utf-8') as f:
             w = csv.writer(f)
             w.writerow(['Asset Path','Asset ID','Archive','Offset','Size'])
             for a in self.assets:
-                w.writerow([a.filename,f'0x{a.asset_id:016X}',
+                lang = _lang_suffix_for(a, self.assets, reader=reader)
+                w.writerow([a.filename + lang, f'0x{a.asset_id:016X}',
                              a.archive_name,f'0x{a.archive_offset:08X}',a.file_size])
         print(f'CSV: {path} ({len(self.assets):,} rows)')
 
@@ -961,7 +962,8 @@ def cmd_extract(args):
 
 def cmd_csv(args):
     toc = _auto_toc(args)
-    toc.export_csv(getattr(args,'output','assets.csv'))
+    reader = ArchiveReader(args.archive_dir) if getattr(args,'archive_dir',None) else None
+    toc.export_csv(getattr(args,'output','assets.csv'), reader=reader)
 
 def cmd_hash(args):
     h = sm_hash(args.path)
@@ -1117,6 +1119,7 @@ def main():
 
     s = sub.add_parser('csv', help='Export asset list to CSV')
     s.add_argument('--output', default='assets.csv')
+    s.add_argument('--archive-dir', default=None, help='Archive dir for language detection on localization files')
 
     s = sub.add_parser('hash', help='Compute hash for a path string')
     s.add_argument('path')
