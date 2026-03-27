@@ -490,6 +490,57 @@ class TOC:
         struct.pack_into('<I',buf,asset.sz_toc,new_sz)
         self.dec_data = bytes(buf)
 
+    def add_archive(self, name: str) -> int:
+        """Add a new archive entry to ArchiveFiles (Section 0) in the TOC.
+
+        Inserts a 24-byte entry at the end of Section 0, shifts all
+        subsequent section data, and updates section offsets in the header.
+        Returns the new archive index.
+        """
+        new_idx = max(a.index for a in self.archive_files) + 1
+
+        # Build 24-byte archive entry: unk1(4) + unk2(4) + name+null(padded to 16)
+        name_bytes = name.encode('ascii') + b'\x00'
+        entry = struct.pack('<II', 0, 0) + name_bytes
+        entry = entry.ljust(ARCH_STRIDE, b'\x00')  # pad to 24 bytes
+
+        # Find Section 0 (ArchiveFiles) and insert at its end
+        sec0 = self.sections[0]
+        insert_pos = sec0.offset + sec0.size
+
+        buf = bytearray(self.dec_data)
+        buf[insert_pos:insert_pos] = entry  # insert 24 bytes
+
+        # Update Section 0 size
+        nsec = struct.unpack('<I', buf[12:16])[0]
+        pos = 16
+        for i in range(nsec):
+            h, off, sz = struct.unpack('<III', buf[pos:pos+12])
+            if off == sec0.offset:
+                # This is Section 0 — increase size
+                struct.pack_into('<I', buf, pos+8, sz + ARCH_STRIDE)
+            elif off > sec0.offset:
+                # Sections after Section 0 — shift offset
+                struct.pack_into('<I', buf, pos+4, off + ARCH_STRIDE)
+            pos += 12
+
+        self.dec_data = bytes(buf)
+
+        # Update in-memory section info
+        sec0.size += ARCH_STRIDE
+        for s in self.sections[1:]:
+            if s.offset > sec0.offset:
+                s.offset += ARCH_STRIDE
+
+        # Update ai_toc/ao_toc/sz_toc for all assets (they're byte offsets into dec_data)
+        for a in self.assets:
+            if a.ai_toc > sec0.offset: a.ai_toc += ARCH_STRIDE
+            if a.ao_toc > sec0.offset: a.ao_toc += ARCH_STRIDE
+            if a.sz_toc > sec0.offset: a.sz_toc += ARCH_STRIDE
+
+        self.archive_files.append(ArchiveFile(new_idx, name, 0, 0, 0, 0))
+        return new_idx
+
     def save(self, path: Optional[str] = None) -> None:
         out = path or self.toc_path
         with open(out,'wb') as f:
@@ -1045,14 +1096,24 @@ def cmd_patch(args):
     if not pairs:
         print('No files to patch.'); return
 
-    # Use the next available archive index
-    new_idx = max(a.index for a in toc.archive_files) + 1
+    # Validate: reject files with asset wrapper (0xBA20AFB5)
+    for asset, file_path in pairs:
+        with open(file_path, 'rb') as f:
+            header = f.read(4)
+        if len(header) >= 4 and struct.unpack('<I', header)[0] == 0xBA20AFB5:
+            print(f'  ERROR: {os.path.basename(file_path)} has asset wrapper (0xBA20AFB5)')
+            print(f'  Files must NOT include the wrapper header.')
+            print(f'  Use loc-import output or strip first 0x28 bytes.')
+            return
+
+    # Register mod archive in TOC ArchiveFiles section
+    new_idx = toc.add_archive(mod_name)
 
     # Write mod archive
     mod_path = os.path.join(archive_dir, mod_name)
     os.makedirs(os.path.dirname(mod_path) if os.path.dirname(mod_path) else '.', exist_ok=True)
 
-    print(f'\n=== Patch: {len(pairs)} asset(s) → {mod_name} ===')
+    print(f'\n=== Patch: {len(pairs)} asset(s) → {mod_name} (archive index {new_idx}) ===')
 
     with open(mod_path, 'wb') as out:
         for asset, file_path in pairs:
@@ -1060,7 +1121,7 @@ def cmd_patch(args):
             new_off = out.tell()
             out.write(data)
             toc.patch_redirect(asset, new_idx, new_off, len(data))
-            print(f'  ✓ {asset.filename} (offset 0x{asset.archive_offset:08X}) ← {os.path.basename(file_path)} ({len(data):,} B)')
+            print(f'  ✓ {asset.filename} ← {os.path.basename(file_path)} ({len(data):,} B)')
 
     mod_size = os.path.getsize(mod_path)
     print(f'  Archive: {mod_path} ({mod_size:,} bytes)')
