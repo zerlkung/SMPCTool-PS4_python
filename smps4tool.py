@@ -1219,6 +1219,21 @@ def cmd_patch(args):
     if not pairs:
         print('No files to patch.'); return
 
+    # --all-lang: expand each localization asset to all 32 language duplicates
+    if getattr(args, 'all_lang', False):
+        expanded = []
+        for asset, file_path in pairs:
+            # find all duplicates of this asset (same filename + same archive)
+            dupes = [a for a in toc.assets
+                     if a.filename == asset.filename and a.archive_name == asset.archive_name]
+            if len(dupes) > 1:
+                print(f'  --all-lang: expanding {asset.filename!r} → {len(dupes)} slots')
+                for d in dupes:
+                    expanded.append((d, file_path))
+            else:
+                expanded.append((asset, file_path))
+        pairs = expanded
+
     # Auto-strip asset wrapper (0xBA20AFB5) if present
     stripped_pairs = []
     for asset, file_path in pairs:
@@ -1464,6 +1479,8 @@ def main():
                    help='asset=file pairs (e.g. "0xBE55D94F171BF8DE=modified.localization")')
     s.add_argument('--output-toc', default='toc.new', help='Output TOC path')
     s.add_argument('--no-backup', action='store_true', help='Skip TOC backup')
+    s.add_argument('--all-lang', action='store_true',
+                   help='For localization assets: patch ALL 32 language slots with the same file')
 
     args = p.parse_args()
     cmds = {
