@@ -18,7 +18,7 @@ Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 | Localization import (`loc-import`) | ✅ Working — use `--all-lang` to patch all 32 language slots |
 | CP874 / Thai encoding support | ✅ Implemented |
 | Format B (wrapper + raw DAT1) | ✅ Implemented |
-| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool ready, in-game testing in progress |
+| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool ready, font & loc assets mapped, testing in progress |
 
 ---
 
@@ -253,14 +253,37 @@ It is identical to `smps4tool.py` except for `ARCH_STRIDE = 72` (vs 24 for SM1).
 | Loc archive | `p000115` | `p000065` |
 | Loc hash | `0xBE55D94F171BF8DE` | `0xBE55D94F171BF8DE` (same) |
 | Strings per lang | 54,010 | 34,079 |
+| Font hash | `0xB1BC4746124FA7ED` | `0xB1BC4746124FA7ED` (same) |
+| Font archive | `p000026` | `g00s012` |
+| Font size | 438 KB | 272 KB |
 
 Usage is identical — just replace `smps4tool.py` with `smps4tool_mm.py` and use `MilesAssetHashes.txt`:
 
 ```
 python smps4tool_mm.py build-hashdb --dag dag --output MilesAssetHashes.txt
 python smps4tool_mm.py info
-python smps4tool_mm.py patch --archive-dir asset_archive --mod-name modmycon --files "localization_localization_all.localization.en-US=thai.loc" --all-lang --output-toc toc.new
 ```
+
+### Known Asset Locations (MM PS4)
+
+| Asset | Archive | Hash |
+|---|---|---|
+| Localization (32 languages) | `p000065` | `0xBE55D94F171BF8DE` |
+| Font (GFX/Scaleform) | `g00s012` | `0xB1BC4746124FA7ED` |
+
+### Translation Workflow (MM PS4)
+
+```
+python smps4tool_mm.py loc-export p000065_en.loc strings.csv
+```
+_(edit CSV — save as UTF-8)_
+```
+python smps4tool_mm.py loc-import p000065_en.loc strings.csv imported.loc
+python fix_thai_chars.py imported.loc fixed.loc
+python smps4tool_mm.py patch --archive-dir asset_archive --mod-name modmycon --files "localization_localization_all.localization.en=fixed.loc" "0xB1BC4746124FA7ED=0xB1BC4746124FA7ED" --all-lang --output-toc toc.new
+```
+
+**Note:** `g00s012` must be present in `--archive-dir` for font patching. Language detection uses `ABANDON_CONFIRM_HEADER` (MM has no `TEST_ALL_LANG` key).
 
 ---
 
@@ -291,7 +314,7 @@ python smps4tool_mm.py patch --archive-dir asset_archive --mod-name modmycon --f
 | Font replacement | ✅ ใช้งานได้ — ทดสอบในเกมแล้ว |
 | loc-export | ✅ ใช้งานได้ |
 | loc-import (นำเข้าการแปล) | ✅ ใช้งานได้ — ใช้ `--all-lang` เพื่อ patch ทุก 32 language slots |
-| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool พร้อมแล้ว อยู่ระหว่างทดสอบในเกม |
+| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool พร้อมแล้ว map assets ครบ อยู่ระหว่างทดสอบในเกม |
 
 ---
 
