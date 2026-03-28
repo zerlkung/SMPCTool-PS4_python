@@ -155,6 +155,7 @@ _TEST_LANG_MAP = {
 
 # Fallback: ABANDON_CONFIRM_HEADER translation → language code
 _HEADER_LANG_MAP = {
+    # SM1 values
     'ARE YOU SURE?':        'en',
     '¿SEGURO?':             'es',
     'BIST DU SICHER?':      'de',
@@ -174,6 +175,27 @@ _HEADER_LANG_MAP = {
     '확실합니까?':              'ko', '정말 괜찮습니까?': 'ko',
     '你確定嗎？':              'zh-Hant',
     '你确定吗？':              'zh-Hans',
+    # MM-specific values (no TEST_ALL_LANG key in MM)
+    'ABANDON MISSION':      'en',
+    'ミッションを中止':          'ja',
+    '임무 포기':                'ko',
+    'AVBRYT OPPDRAGET':     'no',
+    'PORZUĆ MISJĘ':         'pl',
+    'ABANDONAR MISSÃO':     'pt-BR',
+    'ПРЕРВАТЬ ЗАДАНИЕ':     'ru',
+    'ABANDONAR MISIÓN':     'es',
+    'LÄMNA UPPDRAGET':      'sv',
+    'OPUSTIT MISI':         'cs',
+    'KÜLDETÉS FELADÁSA':    'hu',
+    'ΕΓΚΑΤΑΛΕΙΨΗ ΑΠΟΣΤΟΛΗΣ': 'el',
+    'FORLAD MISSION':       'da',
+    'MISSIE VERLATEN':      'nl',
+    'KESKEYTÄ TEHTÄVÄ':     'fi',
+    'ABANDONNER LA MISSION': 'fr',
+    'MISSION AUFGEBEN':     'de',
+    'ABBANDONA MISSIONE':   'it',
+    '放弃任务':               'zh-Hans',
+    '放棄任務':               'zh-Hant',
 }
 
 # Korean TEST_ALL_LANG is in Korean script, detect separately
