@@ -1061,9 +1061,10 @@ def cmd_repack_dir(args):
 def _auto_toc(args) -> TOC:
     hashdb = getattr(args,'hashdb',None)
     if not hashdb or not os.path.exists(hashdb):
-        for c in ['PS4AssetHashes.txt',
-                  os.path.join(os.path.dirname(__file__),'PS4AssetHashes.txt'),
-                  'AssetHashes.txt']:
+        for c in ['MilesAssetHashes.txt',
+                  os.path.join(os.path.dirname(__file__),'MilesAssetHashes.txt'),
+                  'AssetHashes.txt',
+                  'PS4AssetHashes.txt']:
             if os.path.exists(c): hashdb = c; break
     toc = TOC(args.toc, hashdb)
     toc.load()
