@@ -18,6 +18,7 @@ Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 | Localization import (`loc-import`) | ✅ Working — use `--all-lang` to patch all 32 language slots |
 | CP874 / Thai encoding support | ✅ Implemented |
 | Format B (wrapper + raw DAT1) | ✅ Implemented |
+| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool ready, in-game testing in progress |
 
 ---
 
@@ -230,10 +231,36 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 
 | File | Description |
 |---|---|
-| `smps4tool.py` | Main tool |
+| `smps4tool.py` | Main tool — Marvel's Spider-Man (2018) PS4 |
+| `smps4tool_mm.py` | Main tool — Marvel's Spider-Man: Miles Morales PS4 🚧 WIP |
 | `fix_thai_chars.py` | Repair Thai keyboard-mapping errors in imported loc files |
-| `PS4AssetHashes.txt` | Pre-built hash DB (386,344 entries, 44 MB) |
+| `PS4AssetHashes.txt` | Pre-built hash DB for SM1 (386,344 entries, 44 MB) |
+| `MilesAssetHashes.txt` | Pre-built hash DB for MM (296,044 entries, 33 MB) |
 | `SMPS4HashTool.exe` | Original native hash tool (reference only) |
+
+---
+
+## Miles Morales PS4 🚧 WIP
+
+`smps4tool_mm.py` is a separate tool for **Marvel's Spider-Man: Miles Morales (PS4)**.
+It is identical to `smps4tool.py` except for `ARCH_STRIDE = 72` (vs 24 for SM1).
+
+| | SM1 PS4 | MM PS4 |
+|---|---|---|
+| Tool | `smps4tool.py` | `smps4tool_mm.py` |
+| Hash DB | `PS4AssetHashes.txt` | `MilesAssetHashes.txt` |
+| Archive stride | 24 bytes | 72 bytes |
+| Loc archive | `p000115` | `p000065` |
+| Loc hash | `0xBE55D94F171BF8DE` | `0xBE55D94F171BF8DE` (same) |
+| Strings per lang | 54,010 | 34,079 |
+
+Usage is identical — just replace `smps4tool.py` with `smps4tool_mm.py` and use `MilesAssetHashes.txt`:
+
+```
+python smps4tool_mm.py build-hashdb --dag dag --output MilesAssetHashes.txt
+python smps4tool_mm.py info
+python smps4tool_mm.py patch --archive-dir asset_archive --mod-name modmycon --files "localization_localization_all.localization.en-US=thai.loc" --all-lang --output-toc toc.new
+```
 
 ---
 
@@ -264,6 +291,7 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 | Font replacement | ✅ ใช้งานได้ — ทดสอบในเกมแล้ว |
 | loc-export | ✅ ใช้งานได้ |
 | loc-import (นำเข้าการแปล) | ✅ ใช้งานได้ — ใช้ `--all-lang` เพื่อ patch ทุก 32 language slots |
+| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool พร้อมแล้ว อยู่ระหว่างทดสอบในเกม |
 
 ---
 
