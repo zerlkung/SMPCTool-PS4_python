@@ -46,6 +46,7 @@ FIX_DESC = {
     '\u0E4F': '๏→ี  sara ii',
     '\u0E5A': '๚→๊  mai tri',
     '\u0E5B': '๛→๋  mai chattawa',
+    '\uFFFD': '\uFFFD→์  thanthakat (after Thai consonant)',
 }
 
 # Section hashes
@@ -90,6 +91,38 @@ def _parse_sections(dec: bytes) -> dict:
         secs[h] = (off, sz); pos += 12
     return secs
 
+
+
+# Thai consonants that take ์ (thanthakat) — all except ป which takes ็ before final consonant
+_THAI_CONSONANTS = set('กขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบผฝพฟภมยรลวศษสหฬอฮ')
+# ป before a Thai consonant → ็ (mai tai khu), e.g. เป็น, เปิด, ปิด
+_MAI_TAI_KHU_PREV = {'ป'}
+
+def _fix_fffd(text: str) -> tuple:
+    """Replace U+FFFD based on context:
+      - ป + FFFD + Thai consonant → ็ (mai tai khu): เป็น, เปิด
+      - Thai consonant + FFFD      → ์ (thanthakat): ร์, ก์, น์
+      - other + FFFD               → drop (e.g. € + FFFD = stray quote char)
+    Returns (fixed_text, count_processed).
+    """
+    if '\uFFFD' not in text:
+        return text, 0
+    result = []
+    count = 0
+    for i, ch in enumerate(text):
+        if ch == '\uFFFD':
+            prev = text[i-1] if i > 0 else ''
+            nxt  = text[i+1] if i+1 < len(text) else ''
+            nxt_is_thai = '\u0e00' <= nxt <= '\u0e7f'
+            if prev in _MAI_TAI_KHU_PREV and nxt_is_thai:
+                result.append('\u0E47')  # ็ mai tai khu
+            elif prev in _THAI_CONSONANTS:
+                result.append('\u0E4C')  # ์ thanthakat
+            # else: drop (non-Thai context like €+FFFD or end of string)
+            count += 1
+        else:
+            result.append(ch)
+    return ''.join(result), count
 
 def fix_loc_file(in_path: str, out_path: str, dry_run: bool = False) -> dict:
     """
@@ -139,6 +172,9 @@ def fix_loc_file(in_path: str, out_path: str, dry_run: bool = False) -> dict:
 
         # Count and apply substitutions
         fixed = val.translate(CHAR_FIX_TABLE)
+        fixed, n_fffd = _fix_fffd(fixed)
+        if n_fffd:
+            char_stats['\uFFFD'] = char_stats.get('\uFFFD', 0) + n_fffd
         if fixed != val:
             strings_fixed += 1
             for ch in CHAR_FIX:
