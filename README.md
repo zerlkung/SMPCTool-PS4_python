@@ -15,7 +15,7 @@ Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 | Extract / repack / patch | ✅ Working |
 | Font replacement (`0xB1BC4746124FA7ED`) | ✅ Working — verified in-game |
 | Localization export (`loc-export`) | ✅ Working |
-| Localization import (`loc-import`) | 🚧 WIP — pipeline complete, in-game display under investigation |
+| Localization import (`loc-import`) | ✅ Working — use `--all-lang` to patch all 32 language slots |
 | CP874 / Thai encoding support | ✅ Implemented |
 | Format B (wrapper + raw DAT1) | ✅ Implemented |
 
@@ -67,6 +67,12 @@ python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
 
 Creates a small archive with ONLY modified files, then patches the TOC to redirect those assets. All other 657,000+ assets remain untouched.
 
+**`--all-lang`** — patch all 32 language slots at once with the same file. Recommended for localization mods since the game may load a different language slot depending on system/region:
+
+```
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon --files "localization_localization_all.localization.en-US=thai.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+```
+
 **Note:** When patching translated localization files, `p000115` must be present in `--archive-dir` for language detection. If it is not available, the tool falls back to **archive-offset ordering** — `.en-US` → 1st copy, `.en-US_2` → 2nd copy.
 
 ### `repack` / `repack-dir` — Rebuild entire archive
@@ -78,7 +84,7 @@ python3 smps4tool.py repack-dir --archive-dir /game --archive p000045 \
     --dir extracted/ --output-archive p000045_new --output-toc toc.new --flat
 ```
 
-### `loc-export` / `loc-import` — Localization translation ⚠️ WIP
+### `loc-export` / `loc-import` — Localization translation
 ```bash
 # Export to CSV (54,010 strings)
 python3 smps4tool.py loc-export localization_all.localization.en-US strings.csv
@@ -125,11 +131,8 @@ python3 smps4tool.py loc-import \
 # 5. (Optional) Fix Thai keyboard-mapping errors if tone marks are garbled
 python3 fix_thai_chars.py modified.loc fixed.loc
 
-# 6. Patch into game
-python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
-    --files "localization_localization_all.localization.en-US=fixed.loc" \
-            "localization_localization_all.localization.en-US_2=fixed.loc" \
-    --output-toc toc.new
+# 6. Patch into game (--all-lang patches all 32 language slots)
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 
 # 7. Copy toc.new → toc, place modmycon in game archive directory
 ```
@@ -219,6 +222,7 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 - **Format B support** — `loc-export`/`loc-import` now handle both LZ4 (Format A) and raw DAT1 (Format B) localization files.
 - **CP874 encoding** — `loc-export` auto-detects and decodes CP874-as-UTF8 pairs. `loc-import` auto-detects and re-encodes correctly.
 - **Translated file detection** — `_match_lang_duplicate` falls back to archive-offset ordering when `TEST_ALL_LANG` has been translated (making content-based detection unavailable).
+- **`--all-lang` flag** — patches all 32 language slots simultaneously with the same file. Recommended since the game may load a different slot depending on region or system language setting.
 
 ---
 
@@ -259,7 +263,7 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 | Extract / repack / patch | ✅ ใช้งานได้ |
 | Font replacement | ✅ ใช้งานได้ — ทดสอบในเกมแล้ว |
 | loc-export | ✅ ใช้งานได้ |
-| loc-import (นำเข้าการแปล) | 🚧 WIP — pipeline ครบแล้ว อยู่ระหว่างตรวจสอบการแสดงผลในเกม |
+| loc-import (นำเข้าการแปล) | ✅ ใช้งานได้ — ใช้ `--all-lang` เพื่อ patch ทุก 32 language slots |
 
 ---
 
@@ -315,11 +319,8 @@ python3 smps4tool.py loc-import \
 # 5. แก้ tone mark ถ้าผิด (ฃ→่, ฅ→้, ๎→็)
 python3 fix_thai_chars.py modified.loc fixed.loc
 
-# 6. Patch เข้าเกม
-python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
-    --files "localization_localization_all.localization.en-US=fixed.loc" \
-            "localization_localization_all.localization.en-US_2=fixed.loc" \
-    --output-toc toc.new
+# 6. Patch เข้าเกม (--all-lang patch ทุก 32 language slots พร้อมกัน)
+python3 smps4tool.py patch --archive-dir /game --mod-name modmycon --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 ```
 
 ---
@@ -340,6 +341,7 @@ python3 smps4tool.py patch --archive-dir /game --mod-name modmycon \
 - **Format B support** — รองรับ localization format B (wrapper + raw DAT1)
 - **CP874 encoding** — auto-detect และ decode/encode ภาษาไทยที่เก็บเป็น CP874-as-UTF8
 - **Translated file detection** — fallback ด้วย archive-offset ordering เมื่อ `TEST_ALL_LANG` ถูกแปลแล้ว
+- **`--all-lang` flag** — patch ทุก 32 language slots พร้อมกันด้วยไฟล์เดียว เพราะเกมอาจโหลด slot ที่ต่างกันขึ้นอยู่กับ region/system language
 
 ---
 
