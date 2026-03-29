@@ -53,13 +53,13 @@ Localization files with duplicate names (32 languages) are automatically detecte
 ### `patch` — Replace specific assets (lightweight modding)
 ```bash
 # Patch localization — patches both en-copy (slot 0) and en-US (slot 1)
-python3 smps4tool.py patch --archive-dir /game --mod-name mymod \
+python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> \
     --files "localization_localization_all.localization.en-US=modified.loc" \
             "localization_localization_all.localization.en-US_2=modified.loc" \
     --output-toc toc.new
 
 # Patch font + localization together
-python3 smps4tool.py patch --archive-dir /game --mod-name mymod \
+python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> \
     --files "localization_localization_all.localization.en-US=modified.loc" \
             "localization_localization_all.localization.en-US_2=modified.loc" \
             "0xB1BC4746124FA7ED=myfont.gfx" \
@@ -71,7 +71,7 @@ Creates a small archive with ONLY modified files, then patches the TOC to redire
 **`--all-lang`** — patch all 32 language slots at once with the same file. Recommended for localization mods since the game may load a different language slot depending on system/region:
 
 ```
-python3 smps4tool.py patch --archive-dir /game --mod-name mymod --files "localization_localization_all.localization.en-US=thai.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=thai.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 ```
 
 **Note:** When patching translated localization files, `p000115` must be present in `--archive-dir` for language detection. If it is not available, the tool falls back to **archive-offset ordering** — `.en-US` → 1st copy, `.en-US_2` → 2nd copy.
@@ -133,9 +133,9 @@ python3 smps4tool.py loc-import \
 python3 fix_thai_chars.py modified.loc fixed.loc
 
 # 6. Patch into game (--all-lang patches all 32 language slots)
-python3 smps4tool.py patch --archive-dir /game --mod-name mymod --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 
-# 7. Copy toc.new → toc, place mymod in game archive directory
+# 7. Copy toc.new → toc, place <mod-name> file in game archive directory
 ```
 
 ---
@@ -280,7 +280,7 @@ _(edit CSV — save as UTF-8)_
 ```
 python smps4tool_mm.py loc-import p000065_en.loc strings.csv imported.loc
 python fix_thai_chars.py imported.loc fixed.loc
-python smps4tool_mm.py patch --archive-dir asset_archive --mod-name mymod --files "localization_localization_all.localization.en=fixed.loc" "0xB1BC4746124FA7ED=0xB1BC4746124FA7ED" --all-lang --output-toc toc.new
+python smps4tool_mm.py patch --archive-dir asset_archive --mod-name <mod-name> --files "localization_localization_all.localization.en=fixed.loc" "0xB1BC4746124FA7ED=0xB1BC4746124FA7ED" --all-lang --output-toc toc.new
 ```
 
 **Note:** `g00s012` must be present in `--archive-dir` for font patching. Language detection uses `ABANDON_CONFIRM_HEADER` (MM has no `TEST_ALL_LANG` key). Use `--all-lang` when patching localization to ensure the game loads the correct slot.
@@ -371,7 +371,7 @@ python3 smps4tool.py loc-import \
 python3 fix_thai_chars.py modified.loc fixed.loc
 
 # 6. Patch เข้าเกม (--all-lang patch ทุก 32 language slots พร้อมกัน)
-python3 smps4tool.py patch --archive-dir /game --mod-name mymod --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 ```
 
 ---
