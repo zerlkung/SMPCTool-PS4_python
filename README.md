@@ -18,7 +18,7 @@ Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 | Localization import (`loc-import`) | ✅ Working — use `--all-lang` to patch all 32 language slots |
 | CP874 / Thai encoding support | ✅ Implemented |
 | Format B (wrapper + raw DAT1) | ✅ Implemented |
-| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool ready, font & loc assets mapped, testing in progress |
+| **Miles Morales PS4** (`smps4tool_mm.py`) | ✅ Working — font & localization verified in-game |
 
 ---
 
@@ -240,7 +240,7 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 
 ---
 
-## Miles Morales PS4 🚧 WIP
+## Miles Morales PS4 ✅
 
 `smps4tool_mm.py` is a separate tool for **Marvel's Spider-Man: Miles Morales (PS4)**.
 It is identical to `smps4tool.py` except for `ARCH_STRIDE = 72` (vs 24 for SM1).
@@ -283,7 +283,7 @@ python fix_thai_chars.py imported.loc fixed.loc
 python smps4tool_mm.py patch --archive-dir asset_archive --mod-name modmycon --files "localization_localization_all.localization.en=fixed.loc" "0xB1BC4746124FA7ED=0xB1BC4746124FA7ED" --all-lang --output-toc toc.new
 ```
 
-**Note:** `g00s012` must be present in `--archive-dir` for font patching. Language detection uses `ABANDON_CONFIRM_HEADER` (MM has no `TEST_ALL_LANG` key).
+**Note:** `g00s012` must be present in `--archive-dir` for font patching. Language detection uses `ABANDON_CONFIRM_HEADER` (MM has no `TEST_ALL_LANG` key). Use `--all-lang` when patching localization to ensure the game loads the correct slot.
 
 ---
 
@@ -314,7 +314,7 @@ python smps4tool_mm.py patch --archive-dir asset_archive --mod-name modmycon --f
 | Font replacement | ✅ ใช้งานได้ — ทดสอบในเกมแล้ว |
 | loc-export | ✅ ใช้งานได้ |
 | loc-import (นำเข้าการแปล) | ✅ ใช้งานได้ — ใช้ `--all-lang` เพื่อ patch ทุก 32 language slots |
-| **Miles Morales PS4** (`smps4tool_mm.py`) | 🚧 WIP — tool พร้อมแล้ว map assets ครบ อยู่ระหว่างทดสอบในเกม |
+| **Miles Morales PS4** (`smps4tool_mm.py`) | ✅ ใช้งานได้ — ทดสอบ font และ localization ในเกมแล้ว |
 
 ---
 
