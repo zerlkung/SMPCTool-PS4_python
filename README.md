@@ -1,6 +1,6 @@
 # SMPCTool-PS4 Python 🕷️
 
-**Spider-Man PS4 Asset Tool** — A Python rewrite of [SMPCTool-PS4](https://github.com/zerlkung/SMPCTool-PS4) (C#) for managing Marvel's Spider-Man game files on PS4.
+**Spider-Man PS4 Asset Tool** — A Python rewrite of [SMPCTool-PS4](https://github.com/zerlkung/SMPCTool-PS4) (C#) for managing Marvel's Spider-Man game files on PS4. (CUSA11993)
 
 Single-file, pure Python 3. Works as both a CLI tool and a Python library.
 
@@ -302,7 +302,7 @@ python smps4tool_mm.py patch --archive-dir asset_archive --mod-name <mod-name> -
 
 ## SMPCTool-PS4 Python 🕷️
 
-**Spider-Man PS4 Asset Tool** — Python rewrite ของ [SMPCTool-PS4](https://github.com/zerlkung/SMPCTool-PS4) (C#) สำหรับจัดการไฟล์เกม Marvel's Spider-Man บน PS4
+**Spider-Man PS4 Asset Tool** — Python rewrite ของ [SMPCTool-PS4](https://github.com/zerlkung/SMPCTool-PS4) (C#) สำหรับจัดการไฟล์เกม Marvel's Spider-Man บน PS4 (CUSA11993)
 
 ---
 
