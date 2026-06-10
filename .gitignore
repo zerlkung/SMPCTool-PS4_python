@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+*.pyo
+extracted*/
+out/
+*.BAK
+assets.csv
+*.smpcmod
+# Extracted/modified loc files
+modified*.loc
+fixed*.loc
+strings*.csv
+# Game files
+PS5_Files/
+# Font files
+*.gfx
+# Temp scripts
+extract_mod.py
+extract_mm.py
+# Mod archives
+modmycon*
+*.mod
+# Hash DB (use build-hashdb)
+PS4AssetHashes.txt
+MilesAssetHashes.txt
+PS5AssetHashes.txt
+# TOC files
+toc
+toc.new
+toc.BAK
+toc_check.new
