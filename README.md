@@ -353,7 +353,55 @@ python smps5tool.py --toc toc patch --archive-dir PS5_Files --mod-name modmycon 
     --output-toc toc.new
 ```
 
-**Note:** Archive names in PS5 are path-based (`d\localization`). If archives are stored flat (no `d\` subdirectory), the tool auto-detects and finds them. Place `toc`, `dag`, and all `.archive` files in the same directory.
+### Language Slot Selection
+
+PS5 has **31 language slots** (all with same hash `0xBE55D94F171BF8DE`). Use `--asset-index` to pick the right one:
+
+```
+# Slot 0 (first match, usually en-US)
+--asset-index 0
+
+# Slot 1 (commonly the active English slot)
+--asset-index 1
+```
+
+### Patch Mechanism
+
+PS5/PC **cannot create new archive entries** — the game rejects TOC modifications that add archives. Instead, `smps5tool.py` appends data to an existing archive (default: `d\userinterface`, index 130) and redirects assets to the new offsets. No `--mod-name` needed.
+
+**Full workflow:**
+```
+# 1. Extract loc (slot 0, the first match)
+python smps5tool.py --toc toc extract --archive-dir game/ --id 0xBE55D94F171BF8DE --output extracted/
+
+# 2. Export to CSV (56,417 strings)
+python smps5tool.py loc-export extracted/localization/localization_all.localization strings.csv
+
+# 3. Translate: fill "translation" column in strings.csv — save as UTF-8!
+
+# 4. Import back (raw format, game requires uncompressed DAT1)
+python smps5tool.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
+
+# 5. Patch loc + font (appends to d\userinterface)
+python smps5tool.py --toc toc patch --archive-dir game/ \
+    --files "0xBE55D94F171BF8DE=modified.loc" \
+            "0xB1BC4746124FA7ED=font.gfx" \
+    --asset-index 1 \
+    --output-toc toc.new
+
+# 6. Replace toc in game directory
+copy toc.new toc
+```
+
+### Lessons Learned (PS5/PC vs PS4)
+
+| Issue | Symptom | Root Cause | Fix |
+|---|---|---|---|
+| `add_archive` | Black screen on boot | Game validates archive count; rejects new entries | Append to existing archive (`d\userinterface`) |
+| `--all-lang` | Black screen | 31 unique language files expected, not 1 shared | Patch only active slot (`--asset-index`) |
+| LZ4 compression | Black screen | Game expects raw DAT1 inside LZ4 header | `_loc_compress` writes uncompressed |
+| Wrong slot | Game loads but shows English | Game reads specific slot per system language | `--asset-index` to target correct slot |
+| Section preservation | Data corruption / crash | PS5 loc has 9 DAT1 sections (vs 4 on PS4) | Preserve extra sections during import |
 
 ---
 
@@ -452,6 +500,66 @@ python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "lo
 |---|---|---|---|
 | Localization (ข้อความ) | `p000115` | `0xBE55D94F171BF8DE` | 32 ภาษา, LZ4+DAT1 |
 | Font หลัก (Azbuka Pro) | `p000026` | `0xB1BC4746124FA7ED` | GFX/Scaleform, 438 KB |
+
+---
+
+## PS5 / PC Remaster (smps5tool.py)
+
+เครื่องมือสำหรับ **Marvel's Spider-Man Remastered (PS5/PC)** — ใช้ `smps5tool.py`
+
+| | SM1 PS4 | PS5/PC |
+|---|---|---|
+| ARCH_STRIDE | 24 | 72 |
+| Archives | 118 (ชื่อแบน) | 174 (path `d\xxx`) |
+| Loc hash | `0xBE55D94F171BF8DE` | เหมือนกัน |
+| Loc format | LZ4 บีบอัด, 4 sections | RAW ใน LZ4 header, 9 sections |
+| ภาษา | 32 ไฟล์แยก | 31 slots ใน `d\localization` |
+| Strings | 54,010 | 56,417 |
+| Font hash | `0xB1BC4746124FA7ED` | เหมือนกัน |
+| Font archive | `p000026` | `d\userinterface` |
+
+### ข้อแตกต่างสำคัญจาก PS4
+
+- **ต่อท้าย archive เดิม** — PS5 ไม่รับ archive ใหม่ใน TOC → ต้องต่อท้าย `d\userinterface` (หรือ archive อื่นที่มีอยู่แล้ว) แทนการสร้าง `modmycon`
+- **เลือก slot ด้วย `--asset-index`** — 31 slots ภาษา เกมอ่านเฉพาะ slot ที่ตรงกับระบบ ต้องหาว่า slot ไหนเกมอ่าน (ปกติ slot 1)
+- **`--all-lang` ใช้ไม่ได้** — PS5 แต่ละ slot เป็นคนละภาษา ถ้า patch เหมือนกันหมดเกมจะพัง
+- **RAW storage** — localization ต้องเก็บแบบไม่บีบอัด (raw DAT1) เกมอ่าน LZ4 compress ไม่ได้
+- **9 sections** — PS5 loc มี 9 DAT1 sections (PS4 มี 4) ต้อง preserve ตอน import
+
+### ขั้นตอนแปลภาษา (PS5/PC)
+
+```bash
+# 1. Extract localization (slot 0 = English)
+python smps5tool.py --toc toc extract --archive-dir game/ --id 0xBE55D94F171BF8DE --output extracted/
+
+# 2. Export CSV (56,417 strings)
+python smps5tool.py loc-export extracted/localization/localization_all.localization strings.csv
+
+# 3. แปลภาษาใน CSV (คอลัมน์ translation) — บันทึกเป็น UTF-8 เท่านั้น!
+
+# 4. Import กลับ (เป็น raw format)
+python smps5tool.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
+
+# 5. Patch loc + ฟอนต์ (ต่อท้าย d\userinterface)
+python smps5tool.py --toc toc patch --archive-dir game/ \
+    --files "0xBE55D94F171BF8DE=modified.loc" \
+            "0xB1BC4746124FA7ED=font.gfx" \
+    --asset-index 1 \
+    --output-toc toc.new
+
+# 6. แทนที่ toc ในโฟลเดอร์เกม
+copy toc.new toc
+```
+
+### บทเรียนจาก PS5 (Lessons Learned)
+
+| ปัญหา | อาการ | สาเหตุ | วิธีแก้ |
+|---|---|---|---|
+| `add_archive` | จอดำ ไม่เข้าเกม | เกมตรวจสอบจำนวน archive; ไม่รับ archive ใหม่ | ต่อท้าย archive เดิม (`d\userinterface`) |
+| `--all-lang` | จอดำ | 31 ไฟล์ภาษาต้องต่างกัน | ใช้ `--asset-index` patch เฉพาะ slot ที่เกมอ่าน |
+| LZ4 บีบอัด | จอดำ | เกมคาดหวัง raw DAT1 ใน LZ4 header | `_loc_compress` เขียนแบบไม่บีบอัด |
+| ผิด slot | เข้าเกมได้แต่เป็นอังกฤษ | เกมอ่าน slot ตามภาษาเครื่อง | `--asset-index` เลือก slot ที่ถูกต้อง |
+| Section ไม่ครบ | ข้อมูลเสียหาย | PS5 มี 9 sections (PS4 มี 4) | Preserve ทุก section ตอน import |
 
 ---
 

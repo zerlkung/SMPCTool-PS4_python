@@ -687,14 +687,10 @@ def _loc_compress(dec: bytes, magic: int) -> bytes:
         header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
         return header + dec
     else:
-        # Format A (and default): LZ4 compress
-        try:
-            import lz4.block
-        except ImportError:
-            print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
-        compressed = lz4.block.compress(dec, store_size=False)
+        # PS5/PC: always write raw uncompressed DAT1 (game expects raw)
+        # The LZ4 header is just a container — game loader reads raw inside
         header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
-        return header + compressed
+        return header + dec
 
 def _loc_parse_sections(dec: bytes) -> dict:
     """Parse DAT1 sections, return {hash: (offset, size)}."""
@@ -1251,7 +1247,6 @@ def cmd_patch(args):
     """
     toc = _auto_toc(args)
     archive_dir = args.archive_dir
-    mod_name = args.mod_name
     out_toc = getattr(args, 'output_toc', None) or 'toc.new'
     backup = not getattr(args, 'no_backup', False)
     reader = ArchiveReader(archive_dir)
@@ -1277,21 +1272,21 @@ def cmd_patch(args):
         if not os.path.exists(file_path):
             print(f'  ERROR: file not found: {file_path}'); return
 
-        asset = _resolve_asset(toc, asset_ref, reader)
+        idx = getattr(args, 'asset_index', 0)
+        asset = _resolve_asset(toc, asset_ref, reader, index=idx)
         if not asset:
-            print(f'  ERROR: asset not found: {asset_ref}'); return
+            print(f'  ERROR: asset not found: {asset_ref} (index {idx})'); return
         pairs.append((asset, file_path))
 
     if not pairs:
         print('No files to patch.'); return
 
-    # --all-lang: expand each localization asset to all 32 language duplicates
+    # --all-lang: expand each localization asset to all language duplicates
     if getattr(args, 'all_lang', False):
         expanded = []
         for asset, file_path in pairs:
-            # find all duplicates of this asset (same filename + same archive)
-            dupes = [a for a in toc.assets
-                     if a.filename == asset.filename and a.archive_name == asset.archive_name]
+            # PS5/PC: match all assets with same hash (may span multiple archives)
+            dupes = [a for a in toc.assets if a.asset_id == asset.asset_id]
             if len(dupes) > 1:
                 print(f'  --all-lang: expanding {asset.filename!r} -> {len(dupes)} slots')
                 for d in dupes:
@@ -1317,31 +1312,50 @@ def cmd_patch(args):
             stripped_pairs.append((asset, file_path))
     pairs = stripped_pairs
 
-    # Register mod archive in TOC ArchiveFiles section
-    new_idx = toc.add_archive(mod_name)
+    # PS5/PC: append to existing archive instead of creating new one
+    # (game rejects new archive entries — must reuse existing archive)
+    target_arch = getattr(args, 'target_archive', None)
+    if target_arch:
+        arch_matches = [a for a in toc.archive_files if target_arch in a.filename]
+        if arch_matches:
+            target_idx = arch_matches[0].index
+        else:
+            print(f'  ERROR: target archive not found: {target_arch}'); return
+    else:
+        # Default: use d\userinterface (index 130 for PS5 Remaster)
+        target_idx = 130
 
-    # Write mod archive
-    mod_path = os.path.join(archive_dir, mod_name)
-    os.makedirs(os.path.dirname(mod_path) if os.path.dirname(mod_path) else '.', exist_ok=True)
+    target_name = toc.archive_files[target_idx].filename if target_idx < len(toc.archive_files) else f'archive_{target_idx}'
+    mod_path = os.path.join(archive_dir, target_name)
+    # _find_archive handles d\ path resolution
+    actual_path = ArchiveReader(archive_dir)._find_archive(target_name)
 
-    print(f'\n=== Patch: {len(pairs)} asset(s) -> {mod_name} (archive index {new_idx}) ===')
+    print(f'\n=== Patch: {len(pairs)} asset(s) -> [{target_idx}] {target_name} ===')
 
-    with open(mod_path, 'wb') as out:
+    # Append to existing archive
+    file_offsets = {}
+    with open(actual_path, 'ab') as out:
         for asset, file_path in pairs:
-            data = open(file_path, 'rb').read()
-            new_off = out.tell()
-            out.write(data)
-            toc.patch_redirect(asset, new_idx, new_off, len(data))
-            print(f'  [OK] {asset.filename} <- {os.path.basename(file_path)} ({len(data):,} B)')
+            if file_path in file_offsets:
+                new_off, data_len = file_offsets[file_path]
+                toc.patch_redirect(asset, target_idx, new_off, data_len)
+                print(f'  [OK] {asset.filename} <- {os.path.basename(file_path)} ({data_len:,} B) [shared]')
+            else:
+                data = open(file_path, 'rb').read()
+                new_off = out.tell()
+                out.write(data)
+                file_offsets[file_path] = (new_off, len(data))
+                toc.patch_redirect(asset, target_idx, new_off, len(data))
+                print(f'  [OK] {asset.filename} <- {os.path.basename(file_path)} ({len(data):,} B)')
 
-    mod_size = os.path.getsize(mod_path)
-    print(f'  Archive: {mod_path} ({mod_size:,} bytes)')
+    archive_size = os.path.getsize(actual_path)
+    print(f'  Archive: {actual_path} ({archive_size:,} bytes)')
 
     toc.save(out_toc)
     print(f'  Done. Replace your toc with {out_toc}')
 
 
-def _resolve_asset(toc, ref, reader):
+def _resolve_asset(toc, ref, reader, index=0):
     """Resolve an asset reference to a specific TOC entry.
 
     Handles:
@@ -1349,10 +1363,17 @@ def _resolve_asset(toc, ref, reader):
     - Exact name: 'localization\\localization_all.localization'
     - Extracted flat name: 'localization_localization_all.localization'
     - Name with lang suffix: 'localization_localization_all.localization.en-US'
+
+    index: when multiple assets match, return the Nth one (0=first)
     """
-    # 1. Direct hex ID
+    # 1. Direct hex ID — get Nth matching asset
     if ref.startswith(('0x', '0X')):
-        return toc.get_by_id(int(ref, 16))
+        matches = [a for a in toc.assets if a.asset_id == int(ref, 16)]
+        if index < len(matches):
+            return matches[index]
+        if matches:
+            return matches[0]  # fallback: index out of range, use first
+        return None
 
     # 2. Check for language suffix
     base_ref = _strip_lang_suffix(ref)
@@ -1538,15 +1559,18 @@ def main():
     s.add_argument('csv', help='Translated CSV file path')
     s.add_argument('output', help='Output localization file path')
 
-    s = sub.add_parser('patch', help='Patch specific assets → small mod archive + new TOC')
+    s = sub.add_parser('patch', help='Patch assets into existing archive + update TOC')
     s.add_argument('--archive-dir', required=True, help='Game archive directory')
-    s.add_argument('--mod-name', required=True, help='Name for the mod archive file')
+    s.add_argument('--target-archive', default='d\\userinterface',
+                   help='Existing archive to append to (default: d\\userinterface)')
     s.add_argument('--files', nargs='+', required=True,
                    help='asset=file pairs (e.g. "0xBE55D94F171BF8DE=modified.localization")')
     s.add_argument('--output-toc', default='toc.new', help='Output TOC path')
     s.add_argument('--no-backup', action='store_true', help='Skip TOC backup')
     s.add_argument('--all-lang', action='store_true',
-                   help='For localization assets: patch ALL 32 language slots with the same file')
+                   help='For localization assets: patch ALL language slots (matched by asset ID) with the same file')
+    s.add_argument('--asset-index', type=int, default=0,
+                   help='When multiple assets match, use the Nth one (0=first, 1=second, etc.)')
 
     args = p.parse_args()
     cmds = {

@@ -39,6 +39,47 @@ CHAR_FIX = {
 }
 CHAR_FIX_TABLE = str.maketrans(CHAR_FIX)
 
+# ─── CP874-as-UTF8 decoding (from smps5tool.py) ─────────────────────────────
+def _is_cp874_utf8(raw_bytes: bytes) -> bool:
+    i = 0
+    c2c3_pairs = 0
+    e0_plus = 0
+    while i < len(raw_bytes):
+        b = raw_bytes[i]
+        if b in (0xC2, 0xC3) and i + 1 < len(raw_bytes) and 0x80 <= raw_bytes[i+1] <= 0xBF:
+            c2c3_pairs += 1
+            i += 2
+        elif b >= 0xE0:
+            e0_plus += 1
+            i += 1
+        else:
+            i += 1
+    return c2c3_pairs > 0 and e0_plus == 0
+
+def _decode_cp874_from_utf8(raw_bytes: bytes) -> str:
+    original = bytearray()
+    i = 0
+    while i < len(raw_bytes):
+        b = raw_bytes[i]
+        if b == 0xC2 and i + 1 < len(raw_bytes) and 0x80 <= raw_bytes[i+1] <= 0xBF:
+            original.append(raw_bytes[i+1])
+            i += 2
+        elif b == 0xC3 and i + 1 < len(raw_bytes) and 0x80 <= raw_bytes[i+1] <= 0xBF:
+            original.append(raw_bytes[i+1] + 0x40)
+            i += 2
+        else:
+            original.append(b)
+            i += 1
+    return original.decode('cp874', errors='replace')
+
+def _read_string(dec: bytes, pos: int) -> str:
+    """Read null-terminated string with CP874 auto-detection."""
+    end = dec.index(b'\x00', pos)
+    raw = dec[pos:end]
+    if _is_cp874_utf8(raw):
+        return _decode_cp874_from_utf8(raw)
+    return raw.decode('utf-8', errors='replace')
+
 FIX_DESC = {
     '\u0E03': 'ฃ→่  mai ek',
     '\u0E05': 'ฅ→้  mai tho',
@@ -66,7 +107,13 @@ def _decompress(raw: bytes) -> bytes:
         if not HAS_LZ4:
             print("ERROR: lz4 not installed. Run: pip install lz4"); sys.exit(1)
         rawsize = struct.unpack('<I', raw[4:8])[0]
-        return lz4.block.decompress(raw[0x24:], uncompressed_size=rawsize)
+        compressed = raw[0x24:]
+        if len(compressed) == rawsize:
+            return compressed  # edge-case: stored uncompressed inside LZ4 header
+        try:
+            return lz4.block.decompress(raw[0x24:], uncompressed_size=rawsize)
+        except Exception:
+            return compressed  # PS5/PC: raw uncompressed DAT1 inside LZ4 header
     elif magic == _MAGIC_WRAPPER:
         return raw[0x24:]
     raise ValueError(f"Unknown magic 0x{magic:08X}")
@@ -157,7 +204,7 @@ def fix_loc_file(in_path: str, out_path: str, dry_run: bool = False) -> dict:
 
         if to == 0:
             kpos = kd_off + ko
-            key  = dec[kpos:dec.index(b'\x00', kpos)].decode('utf-8', errors='replace')
+            key  = _read_string(dec, kpos)
             if key != 'INVALID':
                 new_tr_offsets.append(0)
                 continue
@@ -168,7 +215,7 @@ def fix_loc_file(in_path: str, out_path: str, dry_run: bool = False) -> dict:
 
         tpos  = td_off + to
         tend  = dec.index(b'\x00', tpos)
-        val   = dec[tpos:tend].decode('utf-8', errors='replace')
+        val   = _read_string(dec, tpos)
 
         # Count and apply substitutions
         fixed = val.translate(CHAR_FIX_TABLE)

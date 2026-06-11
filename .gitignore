@@ -29,3 +29,11 @@ toc
 toc.new
 toc.BAK
 toc_check.new
+toc.rt
+toc.raw
+# PC game files
+PC_Files/
+# Temp/debug files
+_*.txt
+# Reference binary
+SMPS4HashTool.exe
