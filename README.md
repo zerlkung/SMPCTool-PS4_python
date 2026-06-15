@@ -350,10 +350,10 @@ python smps5tool.py loc-export extracted/localization/localization_all.localizat
 python smps5tool.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
 
 # 5. Patch font + localization into mod archive
-python smps5tool.py --toc toc patch --archive-dir PS5_Files --mod-name modmycon \
+python smps5tool.py --toc toc patch --archive-dir PS5_Files \
     --files "0xBE55D94F171BF8DE=modified.loc" \
             "0xB1BC4746124FA7ED=font.gfx" \
-    --output-toc toc.new
+    --asset-index 1 --output-toc toc.new
 ```
 
 ### Language Slot Selection
@@ -526,7 +526,7 @@ python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "lo
 
 ### ข้อแตกต่างสำคัญจาก PS4
 
-- **ต่อท้าย archive เดิม** — PS5 ไม่รับ archive ใหม่ใน TOC → ต้องต่อท้าย `d\userinterface` (หรือ archive อื่นที่มีอยู่แล้ว) แทนการสร้าง `modmycon`
+- **ต่อท้าย archive เดิม** — PS5 ไม่รับ archive ใหม่ใน TOC → ต้องต่อท้าย `d\userinterface` (หรือ archive อื่นที่มีอยู่แล้ว)
 - **เลือก slot ด้วย `--asset-index`** — 31 slots ภาษา เกมอ่านเฉพาะ slot ที่ตรงกับระบบ ต้องหาว่า slot ไหนเกมอ่าน (ปกติ slot 1)
 - **`--all-lang` ใช้ไม่ได้** — PS5 แต่ละ slot เป็นคนละภาษา ถ้า patch เหมือนกันหมดเกมจะพัง
 - **RAW storage** — localization ต้องเก็บแบบไม่บีบอัด (raw DAT1) เกมอ่าน LZ4 compress ไม่ได้

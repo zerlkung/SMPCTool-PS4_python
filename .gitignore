@@ -18,7 +18,8 @@ PS5_Files/
 extract_mod.py
 extract_mm.py
 # Mod archives
-modmycon*
+*.stage
+*.modular
 *.mod
 # Hash DB (use build-hashdb)
 PS4AssetHashes.txt
@@ -37,6 +38,9 @@ PC_Files/
 MM_PS5/
 MM_PC/
 MM_PS5 - Backup Files/
+# SM2
+SM2_PS5/
+modding tools/
 # Temp/debug files
 _*.txt
 # Reference binary
