@@ -71,14 +71,16 @@ python sm2.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0x8143F
 | Hash | Name | Size | Format |
 |---|---|---|---|
 | `0x8143F7F3648B4470` | Azbuka Pro Medium Italic | 173 KB | TTF |
-| — | Azbuka Pro | 172 KB | TTF |
-| — | Azbuka Pro Bold | 173 KB | TTF |
-| — | Azbuka Pro Medium | 170 KB | TTF |
-| — | Azbuka Pro Black | 181 KB | TTF |
-| — | Neue Frutiger World Medium | 286 KB | TTF |
-| — | Neue Frutiger World Bold | 283 KB | TTF |
-| — | CJK font | 22 MB | TTF |
-| — | Japanese (Morisawa) | 4.2 MB | OTF |
+| `0x8340AFB3F4414DD0` | Azbuka Pro | 172 KB | TTF |
+| `0xBF14AF43454823A9` | Azbuka Pro Bold | 173 KB | TTF |
+| `0xA22E6E37B6ED9BE1` | Azbuka Pro Medium | 170 KB | TTF |
+| `0xA1C3B6A55BA90C3F` | Azbuka Pro Black | 181 KB | TTF |
+| `0x92D2265A511599A6` | Neue Frutiger World Medium | 286 KB | TTF |
+| `0x979D7F202BCE988D` | Neue Frutiger World Bold | 283 KB | TTF |
+| `0x91EBAEED53E4D2A7` | Magic Spell JF | 46 KB | OTF |
+| `0xBEC061A7EEC14B1E` | CJK font | 22 MB | TTF |
+| `0x82529F9D27FF1EDB` | CJK font | 17.5 MB | TTF |
+| `0xB227E960ACB39DAD` | Japanese (Morisawa) | 4.2 MB | OTF |
 
 - **Latin text**: replace `0x8143F7F3648B4470` (Azbuka Pro Medium Italic)
 - **UI/HUD**: replace Neue Frutiger World fonts
@@ -89,7 +91,17 @@ python sm2.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0x8143F
 | Asset | Hash |
 |---|---|
 | Localization (all languages) | `0xBE55D94F171BF8DE` |
-| Font (Azbuka Pro Medium Italic) | `0x8143F7F3648B4470` |
+| Azbuka Pro Medium Italic | `0x8143F7F3648B4470` |
+| Azbuka Pro | `0x8340AFB3F4414DD0` |
+| Azbuka Pro Bold | `0xBF14AF43454823A9` |
+| Azbuka Pro Medium | `0xA22E6E37B6ED9BE1` |
+| Azbuka Pro Black | `0xA1C3B6A55BA90C3F` |
+| Neue Frutiger World Medium | `0x92D2265A511599A6` |
+| Neue Frutiger World Bold | `0x979D7F202BCE988D` |
+| Magic Spell JF | `0x91EBAEED53E4D2A7` |
+| CJK font | `0xBEC061A7EEC14B1E` |
+| CJK font | `0x82529F9D27FF1EDB` |
+| Japanese (Morisawa) | `0xB227E960ACB39DAD` |
 
 ## Credits
 
