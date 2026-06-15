@@ -358,15 +358,18 @@ python smps5tool.py --toc toc patch --archive-dir PS5_Files --mod-name modmycon 
 
 ### Language Slot Selection
 
-PS5 has **31 language slots** (all with same hash `0xBE55D94F171BF8DE`). Use `--asset-index` to pick the right one:
+### Language Slot Reference
 
-```
-# Slot 0 (first match, usually en-US)
---asset-index 0
+Each game has multiple language slots sharing the same hash. The **active slot** (the one the game actually reads) varies:
 
-# Slot 1 (commonly the active English slot)
---asset-index 1
-```
+| Game | Active Slot | `--asset-index` | Note |
+|---|---|---|---|
+| **SM Remaster PS5** | 1 | `--asset-index 1` | Slot 0 & 2 = English, game reads slot 1 |
+| **MM PS5** | 0 | `--asset-index 0` | Slot 0 = "ABANDON MISSION", game reads first |
+| **MM PS4** | — | (use `--all-lang`) | 32 copies, patch all |
+| **SM1 PS4** | — | (use `--all-lang`) | 32 copies, patch all |
+
+**How to find the active slot:** patch each slot 0,1,2 one at a time. If game shows translation = correct slot. If game shows English = wrong slot. If game black screens = slot IS read but file has issues.
 
 ### Patch Mechanism
 
@@ -553,6 +556,19 @@ python smps5tool.py --toc toc patch --archive-dir game/ \
 # 6. แทนที่ toc ในโฟลเดอร์เกม
 copy toc.new toc
 ```
+
+### การเลือก Language Slot
+
+แต่ละเกมมีหลาย language slot แชร์ hash เดียวกัน ต้องเลือกให้ถูกว่าเกมอ่าน slot ไหน:
+
+| เกม | Active Slot | `--asset-index` | หมายเหตุ |
+|---|---|---|---|
+| **SM Remaster PS5** | 1 | `--asset-index 1` | Slot 0,2 = อังกฤษ เกมอ่าน slot 1 |
+| **MM PS5** | 0 | `--asset-index 0` | Slot 0 = "ABANDON MISSION" |
+| **MM PS4** | — | (ใช้ `--all-lang`) | 32 copies |
+| **SM1 PS4** | — | (ใช้ `--all-lang`) | 32 copies |
+
+**วิธีหา active slot:** ลอง patch slot 0,1,2 ทีละตัว ถ้าเกมแสดงผลเป็นภาษาแปล = ถูก slot / เป็นอังกฤษ = ผิด slot / จอดำ = ถูก slot แต่ไฟล์มีปัญหา
 
 ### บทเรียนจาก PS5 (Lessons Learned)
 
