@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
+# sm1.py — Marvel's Spider-Man 1 (PS4)
 """
-SMPS4Tool - Spider-Man PS4 Asset Tool
-Python port of SMPCTool adapted for PS4 file format.
+SM1 Tool - Spider-Man 1 PS4 Asset Tool
+Python port of SMPCTool for PS4 file format.
 
 Setup:      pip install lz4  (required for loc-export/loc-import)
-First run:  python3 smps4tool.py build-hashdb --dag dag
-Then:       python3 smps4tool.py info
-            python3 smps4tool.py list --search spider-man
-            python3 smps4tool.py extract --archive-dir /game --archive g00s000
-            python3 smps4tool.py loc-export localization.en-US output.csv
+First run:  python sm1.py build-hashdb --dag dag
+Then:       python sm1.py info
+            python sm1.py list --search spider-man
+            python sm1.py extract --archive-dir /game --archive g00s000
+            python sm1.py loc-export localization.en-US output.csv
 """
 
 import struct, zlib, os, sys, csv, re
@@ -1413,7 +1414,7 @@ def _match_lang_duplicate(toc, filename, archive_name, lang_suffix, reader):
 
 def main():
     import argparse
-    p = argparse.ArgumentParser(prog='smps4tool', description='Spider-Man PS4 Asset Tool')
+    p = argparse.ArgumentParser(prog='sm1', description='Spider-Man 1 PS4 Asset Tool')
     p.add_argument('--toc',    default='toc')
     p.add_argument('--hashdb', default='PS4AssetHashes.txt')
     sub = p.add_subparsers(dest='cmd')

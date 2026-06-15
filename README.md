@@ -12,12 +12,12 @@ Single-file per platform, pure Python 3. Works as a CLI tool and a Python librar
 
 | Tool | Platform | ARCH_STRIDE | Loc Strings |
 |---|---|---|---|
-| `smps4tool.py` | SM1 PS4 (CUSA11993) | 24 | 54,010 |
-| `smps4tool_mm.py` | Miles Morales PS4 | 72 | 34,079 |
-| **`smps5tool.py`** | **SM Remaster PS5/PC** | **72** | **56,417** |
-| **`smps5tool.py`** | **Miles Morales PS5/PC** | **72** | **34,076 / 35,128** |
+| `sm1.py` | SM1 PS4 (CUSA11993) | 24 | 54,010 |
+| `mm.py` | Miles Morales PS4 | 72 | 34,079 |
+| **`smr.py`** | **SM Remaster PS5/PC** | **72** | **56,417** |
+| **`smr.py`** | **Miles Morales PS5/PC** | **72** | **34,076 / 35,128** |
 
-> **Note:** `smps5tool.py` works for BOTH Spider-Man Remastered AND Miles Morales on PS5/PC. The TOC format is identical (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections (1 extra vs SM Remaster's 6) — handled automatically.
+> **Note:** `smr.py` works for BOTH Spider-Man Remastered AND Miles Morales on PS5/PC. The TOC format is identical (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections (1 extra vs SM Remaster's 6) — handled automatically.
 
 ---
 
@@ -48,8 +48,8 @@ Single-file per platform, pure Python 3. Works as a CLI tool and a Python librar
 ## First-Time Setup
 
 ```bash
-python3 smps4tool.py build-hashdb --dag dag    # run once (~12 sec, 44 MB)
-python3 smps4tool.py info                       # verify
+python3 sm1.py build-hashdb --dag dag    # run once (~12 sec, 44 MB)
+python3 sm1.py info                       # verify
 ```
 
 > The included `PS4AssetHashes.txt` is a pre-built hash DB (386,344 entries). You can skip build-hashdb if you already have it.
@@ -60,8 +60,8 @@ python3 smps4tool.py info                       # verify
 
 ### `extract` — Extract assets
 ```bash
-python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/
-python3 smps4tool.py extract --archive-dir /game --archive p000045 --output out/ --flat --skip-hex
+python3 sm1.py extract --archive-dir /game --archive p000045 --output out/
+python3 sm1.py extract --archive-dir /game --archive p000045 --output out/ --flat --skip-hex
 ```
 
 Localization files with duplicate names (32 languages) are automatically detected from content and suffixed: `.en-US`, `.ja`, `.fr`, `.de`, `.ko`, `.es-LA`, `.pt-BR`, etc. (32/32 verified correct)
@@ -69,13 +69,13 @@ Localization files with duplicate names (32 languages) are automatically detecte
 ### `patch` — Replace specific assets (lightweight modding)
 ```bash
 # Patch localization — patches both en-copy (slot 0) and en-US (slot 1)
-python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> \
+python3 sm1.py patch --archive-dir /game --mod-name <mod-name> \
     --files "localization_localization_all.localization.en-US=modified.loc" \
             "localization_localization_all.localization.en-US_2=modified.loc" \
     --output-toc toc.new
 
 # Patch font + localization together
-python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> \
+python3 sm1.py patch --archive-dir /game --mod-name <mod-name> \
     --files "localization_localization_all.localization.en-US=modified.loc" \
             "localization_localization_all.localization.en-US_2=modified.loc" \
             "0xB1BC4746124FA7ED=myfont.gfx" \
@@ -87,27 +87,27 @@ Creates a small archive with ONLY modified files, then patches the TOC to redire
 **`--all-lang`** — patch all 32 language slots at once with the same file. Recommended for localization mods since the game may load a different language slot depending on system/region:
 
 ```
-python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=thai.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+python3 sm1.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=thai.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 ```
 
 **Note:** When patching translated localization files, `p000115` must be present in `--archive-dir` for language detection. If it is not available, the tool falls back to **archive-offset ordering** — `.en-US` → 1st copy, `.en-US_2` → 2nd copy.
 
 ### `repack` / `repack-dir` — Rebuild entire archive
 ```bash
-python3 smps4tool.py repack --archive-dir /game --archive p000045 \
+python3 sm1.py repack --archive-dir /game --archive p000045 \
     --output-archive p000045_new --output-toc toc.new --skip-hex
 
-python3 smps4tool.py repack-dir --archive-dir /game --archive p000045 \
+python3 sm1.py repack-dir --archive-dir /game --archive p000045 \
     --dir extracted/ --output-archive p000045_new --output-toc toc.new --flat
 ```
 
 ### `loc-export` / `loc-import` — Localization translation
 ```bash
 # Export to CSV (54,010 strings)
-python3 smps4tool.py loc-export localization_all.localization.en-US strings.csv
+python3 sm1.py loc-export localization_all.localization.en-US strings.csv
 
 # Import translated CSV back
-python3 smps4tool.py loc-import original.localization translated.csv output.localization
+python3 sm1.py loc-import original.localization translated.csv output.localization
 ```
 
 **Known issues:**
@@ -131,16 +131,16 @@ python3 smps4tool.py loc-import original.localization translated.csv output.loca
 
 ```bash
 # 1. Extract localization files
-python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/ --flat
+python3 sm1.py extract --archive-dir /game --archive p000115 --output loc/ --flat
 
 # 2. Export to CSV
-python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
+python3 sm1.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
 # 3. Translate: fill "translation" column in strings.csv
 #    IMPORTANT: save as UTF-8 encoding (not CP874/TIS-620)
 
 # 4. Import back
-python3 smps4tool.py loc-import \
+python3 sm1.py loc-import \
     loc/localization_localization_all.localization.en-US \
     strings.csv \
     modified.loc
@@ -149,7 +149,7 @@ python3 smps4tool.py loc-import \
 python3 fix_thai_chars.py modified.loc fixed.loc
 
 # 6. Patch into game (--all-lang patches all 32 language slots)
-python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+python3 sm1.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 
 # 7. Copy toc.new → toc, place <mod-name> file in game archive directory
 ```
@@ -247,9 +247,9 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 
 | File | Description |
 |---|---|
-| `smps4tool.py` | Main tool — Marvel's Spider-Man (2018) PS4 |
-| `smps4tool_mm.py` | Main tool — Marvel's Spider-Man: Miles Morales PS4 |
-| `smps5tool.py` | Main tool — Marvel's Spider-Man Remastered PS5/PC |
+| `sm1.py` | Main tool — Marvel's Spider-Man (2018) PS4 |
+| `mm.py` | Main tool — Marvel's Spider-Man: Miles Morales PS4 |
+| `smr.py` | Main tool — Marvel's Spider-Man Remastered PS5/PC |
 | `fix_thai_chars.py` | Repair Thai keyboard-mapping errors in imported loc files |
 | `PS4AssetHashes.txt` | Pre-built hash DB for SM1 (386,344 entries, 44 MB) |
 | `MilesAssetHashes.txt` | Pre-built hash DB for MM (296,044 entries, 33 MB) |
@@ -259,12 +259,12 @@ a00s019.us, a00s020.fr, ... ← Locale-specific archives
 
 ## Miles Morales PS4 ✅
 
-`smps4tool_mm.py` is a separate tool for **Marvel's Spider-Man: Miles Morales (PS4)**.
-It is identical to `smps4tool.py` except for `ARCH_STRIDE = 72` (vs 24 for SM1).
+`mm.py` is a separate tool for **Marvel's Spider-Man: Miles Morales (PS4)**.
+It is identical to `sm1.py` except for `ARCH_STRIDE = 72` (vs 24 for SM1).
 
 | | SM1 PS4 | MM PS4 |
 |---|---|---|
-| Tool | `smps4tool.py` | `smps4tool_mm.py` |
+| Tool | `sm1.py` | `mm.py` |
 | Hash DB | `PS4AssetHashes.txt` | `MilesAssetHashes.txt` |
 | Archive stride | 24 bytes | 72 bytes |
 | Loc archive | `p000115` | `p000065` |
@@ -274,11 +274,11 @@ It is identical to `smps4tool.py` except for `ARCH_STRIDE = 72` (vs 24 for SM1).
 | Font archive | `p000026` | `g00s012` |
 | Font size | 438 KB | 272 KB |
 
-Usage is identical — just replace `smps4tool.py` with `smps4tool_mm.py` and use `MilesAssetHashes.txt`:
+Usage is identical — just replace `sm1.py` with `mm.py` and use `MilesAssetHashes.txt`:
 
 ```
-python smps4tool_mm.py build-hashdb --dag dag --output MilesAssetHashes.txt
-python smps4tool_mm.py info
+python mm.py build-hashdb --dag dag --output MilesAssetHashes.txt
+python mm.py info
 ```
 
 ### Known Asset Locations (MM PS4)
@@ -291,13 +291,13 @@ python smps4tool_mm.py info
 ### Translation Workflow (MM PS4)
 
 ```
-python smps4tool_mm.py loc-export p000065_en.loc strings.csv
+python mm.py loc-export p000065_en.loc strings.csv
 ```
 _(edit CSV — save as UTF-8)_
 ```
-python smps4tool_mm.py loc-import p000065_en.loc strings.csv imported.loc
+python mm.py loc-import p000065_en.loc strings.csv imported.loc
 python fix_thai_chars.py imported.loc fixed.loc
-python smps4tool_mm.py patch --archive-dir asset_archive --mod-name <mod-name> --files "localization_localization_all.localization.en=fixed.loc" "0xB1BC4746124FA7ED=0xB1BC4746124FA7ED" --all-lang --output-toc toc.new
+python mm.py patch --archive-dir asset_archive --mod-name <mod-name> --files "localization_localization_all.localization.en=fixed.loc" "0xB1BC4746124FA7ED=0xB1BC4746124FA7ED" --all-lang --output-toc toc.new
 ```
 
 **Note:** `g00s012` must be present in `--archive-dir` for font patching. Language detection uses `ABANDON_CONFIRM_HEADER` (MM has no `TEST_ALL_LANG` key). Use `--all-lang` when patching localization to ensure the game loads the correct slot.
@@ -306,11 +306,11 @@ python smps4tool_mm.py patch --archive-dir asset_archive --mod-name <mod-name> -
 
 ## PS5 / PC Remaster ✅
 
-`smps5tool.py` works for both **Spider-Man Remastered** AND **Miles Morales** on PS5/PC. Both use the same TOC format (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections vs 6 for SM Remaster — handled automatically.
+`smr.py` works for both **Spider-Man Remastered** AND **Miles Morales** on PS5/PC. Both use the same TOC format (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections vs 6 for SM Remaster — handled automatically.
 
 | | SM1 PS4 | SM Remaster PS5/PC | MM PS5/PC |
 |---|---|---|---|
-| Tool | `smps4tool.py` | `smps5tool.py` | `smps5tool.py` |
+| Tool | `sm1.py` | `smr.py` | `smr.py` |
 | ARCH_STRIDE | 24 | 72 | 72 |
 | Archives | 118 flat | 174 path (`d\xxx`) | 174 path (`d\xxx`) |
 | Assets | 657,831 | 814,061 | 583,237 |
@@ -331,26 +331,26 @@ Key differences from PS4:
 ### Setup
 
 ```
-python smps5tool.py build-hashdb --dag dag --output PS5AssetHashes.txt
-python smps5tool.py --toc toc info
+python smr.py build-hashdb --dag dag --output PS5AssetHashes.txt
+python smr.py --toc toc info
 ```
 
 ### Translation Workflow
 
 ```
 # 1. Extract localization
-python smps5tool.py --toc toc extract --archive-dir PS5_Files --id 0xBE55D94F171BF8DE --output extracted/
+python smr.py --toc toc extract --archive-dir PS5_Files --id 0xBE55D94F171BF8DE --output extracted/
 
 # 2. Export to CSV (56,417 strings)
-python smps5tool.py loc-export extracted/localization/localization_all.localization strings.csv
+python smr.py loc-export extracted/localization/localization_all.localization strings.csv
 
 # 3. Edit strings.csv (fill translation column) — save as UTF-8!
 
 # 4. Import back
-python smps5tool.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
+python smr.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
 
 # 5. Patch font + localization into mod archive
-python smps5tool.py --toc toc patch --archive-dir PS5_Files \
+python smr.py --toc toc patch --archive-dir PS5_Files \
     --files "0xBE55D94F171BF8DE=modified.loc" \
             "0xB1BC4746124FA7ED=font.gfx" \
     --asset-index 1 --output-toc toc.new
@@ -373,23 +373,23 @@ Each game has multiple language slots sharing the same hash. The **active slot**
 
 ### Patch Mechanism
 
-PS5/PC **cannot create new archive entries** — the game rejects TOC modifications that add archives. Instead, `smps5tool.py` appends data to an existing archive (default: `d\userinterface`, index 130) and redirects assets to the new offsets. No `--mod-name` needed.
+PS5/PC **cannot create new archive entries** — the game rejects TOC modifications that add archives. Instead, `smr.py` appends data to an existing archive (default: `d\userinterface`, index 130) and redirects assets to the new offsets. No `--mod-name` needed.
 
 **Full workflow:**
 ```
 # 1. Extract loc (slot 0, the first match)
-python smps5tool.py --toc toc extract --archive-dir game/ --id 0xBE55D94F171BF8DE --output extracted/
+python smr.py --toc toc extract --archive-dir game/ --id 0xBE55D94F171BF8DE --output extracted/
 
 # 2. Export to CSV (56,417 strings)
-python smps5tool.py loc-export extracted/localization/localization_all.localization strings.csv
+python smr.py loc-export extracted/localization/localization_all.localization strings.csv
 
 # 3. Translate: fill "translation" column in strings.csv — save as UTF-8!
 
 # 4. Import back (raw format, game requires uncompressed DAT1)
-python smps5tool.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
+python smr.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
 
 # 5. Patch loc + font (appends to d\userinterface)
-python smps5tool.py --toc toc patch --archive-dir game/ \
+python smr.py --toc toc patch --archive-dir game/ \
     --files "0xBE55D94F171BF8DE=modified.loc" \
             "0xB1BC4746124FA7ED=font.gfx" \
     --asset-index 1 \
@@ -438,7 +438,7 @@ copy toc.new toc
 | Font replacement | ✅ ใช้งานได้ — ทดสอบในเกมแล้ว |
 | loc-export | ✅ ใช้งานได้ |
 | loc-import (นำเข้าการแปล) | ✅ ใช้งานได้ — ใช้ `--all-lang` เพื่อ patch ทุก 32 language slots |
-| **Miles Morales PS4** (`smps4tool_mm.py`) | ✅ ใช้งานได้ — ทดสอบ font และ localization ในเกมแล้ว |
+| **Miles Morales PS4** (`mm.py`) | ✅ ใช้งานได้ — ทดสอบ font และ localization ในเกมแล้ว |
 
 ---
 
@@ -450,8 +450,8 @@ copy toc.new toc
 ### ใช้งานครั้งแรก
 
 ```bash
-python3 smps4tool.py build-hashdb --dag dag
-python3 smps4tool.py info
+python3 sm1.py build-hashdb --dag dag
+python3 sm1.py info
 ```
 
 ---
@@ -479,15 +479,15 @@ python3 smps4tool.py info
 
 ```bash
 # 1. Extract
-python3 smps4tool.py extract --archive-dir /game --archive p000115 --output loc/ --flat
+python3 sm1.py extract --archive-dir /game --archive p000115 --output loc/ --flat
 
 # 2. Export CSV
-python3 smps4tool.py loc-export loc/localization_localization_all.localization.en-US strings.csv
+python3 sm1.py loc-export loc/localization_localization_all.localization.en-US strings.csv
 
 # 3. แปลภาษาใน CSV (คอลัมน์ translation) — บันทึกเป็น UTF-8 เท่านั้น!
 
 # 4. Import
-python3 smps4tool.py loc-import \
+python3 sm1.py loc-import \
     loc/localization_localization_all.localization.en-US \
     strings.csv modified.loc
 
@@ -495,7 +495,7 @@ python3 smps4tool.py loc-import \
 python3 fix_thai_chars.py modified.loc fixed.loc
 
 # 6. Patch เข้าเกม (--all-lang patch ทุก 32 language slots พร้อมกัน)
-python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
+python3 sm1.py patch --archive-dir /game --mod-name <mod-name> --files "localization_localization_all.localization.en-US=fixed.loc" "0xB1BC4746124FA7ED=font.gfx" --all-lang --output-toc toc.new
 ```
 
 ---
@@ -509,9 +509,9 @@ python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "lo
 
 ---
 
-## PS5 / PC Remaster (smps5tool.py)
+## PS5 / PC Remaster (smr.py)
 
-เครื่องมือสำหรับ **Marvel's Spider-Man Remastered (PS5/PC)** — ใช้ `smps5tool.py`
+เครื่องมือสำหรับ **Marvel's Spider-Man Remastered (PS5/PC)** — ใช้ `smr.py`
 
 | | SM1 PS4 | PS5/PC |
 |---|---|---|
@@ -536,18 +536,18 @@ python3 smps4tool.py patch --archive-dir /game --mod-name <mod-name> --files "lo
 
 ```bash
 # 1. Extract localization (slot 0 = English)
-python smps5tool.py --toc toc extract --archive-dir game/ --id 0xBE55D94F171BF8DE --output extracted/
+python smr.py --toc toc extract --archive-dir game/ --id 0xBE55D94F171BF8DE --output extracted/
 
 # 2. Export CSV (56,417 strings)
-python smps5tool.py loc-export extracted/localization/localization_all.localization strings.csv
+python smr.py loc-export extracted/localization/localization_all.localization strings.csv
 
 # 3. แปลภาษาใน CSV (คอลัมน์ translation) — บันทึกเป็น UTF-8 เท่านั้น!
 
 # 4. Import กลับ (เป็น raw format)
-python smps5tool.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
+python smr.py loc-import extracted/localization/localization_all.localization strings.csv modified.loc
 
 # 5. Patch loc + ฟอนต์ (ต่อท้าย d\userinterface)
-python smps5tool.py --toc toc patch --archive-dir game/ \
+python smr.py --toc toc patch --archive-dir game/ \
     --files "0xBE55D94F171BF8DE=modified.loc" \
             "0xB1BC4746124FA7ED=font.gfx" \
     --asset-index 1 \

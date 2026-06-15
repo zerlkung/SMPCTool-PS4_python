@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# smps2tool.py — Spider-Man 2 (PS5/PC)
-# I29 TOC format: direct DAT1, UTF-16LE archives, 16-byte SizeEntries
+# sm2.py — Marvel's Spider-Man 2 (PS5/PC)
+# I29 TOC format: direct DAT1, 66-byte archives, 16-byte SizeEntries, TTF fonts
 """
-SMPS2Tool - Spider-Man 2 PS5/PC Asset Tool
+SM2 Tool - Spider-Man 2 PS5/PC Asset Tool
 
 SM2 uses I29 format (same as Ratchet & Clank: Rift Apart):
 - TOC: magic 0x34E89035, raw DAT1 (no compression)
@@ -617,7 +617,7 @@ def cmd_patch(args):
 
 def main():
     import argparse
-    p = argparse.ArgumentParser(prog='smps2tool', description='Spider-Man 2 PS5/PC Asset Tool')
+    p = argparse.ArgumentParser(prog='sm2', description='Spider-Man 2 PS5/PC Asset Tool')
     p.add_argument('--toc',    default='toc')
     p.add_argument('--hashdb', default='hashes.txt')
     sub = p.add_subparsers(dest='cmd')

@@ -43,27 +43,27 @@ Uses the **I29 TOC format** (same as Ratchet & Clank: Rift Apart). Single-file P
 # https://www.nexusmods.com/marvelsspiderman2/mods/32
 
 # TOC info
-python smps2tool.py --toc "SM2_PS5\toc" info
+python sm2.py --toc "SM2_PS5\toc" info
 
 # Extract font (Azbuka Pro Medium Italic, TTF)
-python smps2tool.py --toc "SM2_PS5\toc" extract --archive-dir "SM2_PS5" --id 0x8143F7F3648B4470 --output extracted/
+python sm2.py --toc "SM2_PS5\toc" extract --archive-dir "SM2_PS5" --id 0x8143F7F3648B4470 --output extracted/
 
 # Extract localization (first language slot = English)
-python smps2tool.py --toc "SM2_PS5\toc" extract --archive-dir "SM2_PS5" --id 0xBE55D94F171BF8DE --output extracted/
+python sm2.py --toc "SM2_PS5\toc" extract --archive-dir "SM2_PS5" --id 0xBE55D94F171BF8DE --output extracted/
 
 # Export to CSV
-python smps2tool.py loc-export extracted/localization_all.localization strings.csv
+python sm2.py loc-export extracted/localization_all.localization strings.csv
 
 # Translate: edit strings.csv → fill translation column → save as UTF-8
 
 # Import CSV → .loc
-python smps2tool.py loc-import extracted/localization_all.localization strings.csv modified.loc
+python sm2.py loc-import extracted/localization_all.localization strings.csv modified.loc
 
 # Inject back (slot 0 — try 0,1,2 until game shows translation)
-python smps2tool.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0xBE55D94F171BF8DE=modified.loc" --asset-index 0 --output-toc "SM2_PS5\toc.new"
+python sm2.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0xBE55D94F171BF8DE=modified.loc" --asset-index 0 --output-toc "SM2_PS5\toc.new"
 
 # Inject font
-python smps2tool.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0x8143F7F3648B4470=font.ttf" --output-toc "SM2_PS5\toc.new"
+python sm2.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0x8143F7F3648B4470=font.ttf" --output-toc "SM2_PS5\toc.new"
 ```
 
 ## Fonts (22 in d\userinterface)
@@ -97,4 +97,4 @@ python smps2tool.py --toc "SM2_PS5\toc" patch --archive-dir "SM2_PS5" --files "0
 - **[ModdingTool on Nexus Mods](https://www.nexusmods.com/marvelsspiderman2/mods/32)** — SM2 asset extraction GUI
 - **[jedijosh920](https://www.nexusmods.com/marvelsspidermanremastered/mods/51)** — Original SMPCTool (PC)
 - **[team-waldo / akintos](https://github.com/team-waldo/InsomniacArchive)** — DAT1 section IDs, localization format
-- `smps4tool.py` / `smps5tool.py` — codebase this tool builds upon
+- `sm1.py` / `smr.py` — codebase this tool builds upon

@@ -17,6 +17,7 @@ PS5_Files/
 # Temp scripts
 extract_mod.py
 extract_mm.py
+CLAUDE.md
 # Mod archives
 *.stage
 *.modular

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-# smps5tool.py — Spider-Man PS5/PC Remaster
-# Fork of smps4tool_mm.py — ARCH_STRIDE=72 + PS5 loc format (raw DAT1, 9 sections)
+# mm.py — Marvel's Spider-Man: Miles Morales (PS4)
+# Fork of sm1.py — only ARCH_STRIDE differs (72 vs 24)
 """
-SMPS5Tool - Spider-Man PS5/PC Asset Tool
-Python port of SMPCTool adapted for PS5/PC file format (Remaster).
+MM Tool - Miles Morales PS4 Asset Tool
+Python port of SMPCTool adapted for PS4 file format.
 
 Setup:      pip install lz4  (required for loc-export/loc-import)
-First run:  python3 smps5tool.py build-hashdb --dag dag
-Then:       python3 smps5tool.py info
-            python3 smps5tool.py list --search spider-man
-            python3 smps5tool.py extract --archive-dir /game --archive d\\localization
-            python3 smps5tool.py loc-export localization.en-US output.csv
+First run:  python3 smps4tool.py build-hashdb --dag dag
+Then:       python3 smps4tool.py info
+            python3 smps4tool.py list --search spider-man
+            python3 smps4tool.py extract --archive-dir /game --archive g00s000
+            python3 smps4tool.py loc-export localization.en-US output.csv
 """
 
 import struct, zlib, os, sys, csv, re
 from dataclasses import dataclass
 from typing import Optional
 
-# --- Native Hash Function -----------------------------------------------------
+# ─── Native Hash Function ─────────────────────────────────────────────────────
 # Reverse-engineered from SMPS4HashTool.exe (native x64 Windows binary).
 # CRC-64 variant with custom lookup table extracted from binary offset 0x2840.
 
@@ -108,7 +108,7 @@ def sm_hash(path: str) -> int:
     return (h >> 2) | 0x8000000000000000
 
 
-# --- Constants ----------------------------------------------------------------
+# ─── Constants ────────────────────────────────────────────────────────────────
 TOC_MAGIC  = 0xAF12AF77
 DAG_MAGIC  = 0x891F77AF
 DAT1_MAGIC = 0x44415431
@@ -332,7 +332,7 @@ def _strip_lang_suffix(filename):
     return filename
 
 
-# --- Data classes -------------------------------------------------------------
+# ─── Data classes ─────────────────────────────────────────────────────────────
 @dataclass
 class Section:
     hash: int; offset: int; size: int
@@ -349,7 +349,7 @@ class AssetEntry:
     ai_toc: int = 0; ao_toc: int = 0; sz_toc: int = 0
 
 
-# --- TOC ----------------------------------------------------------------------
+# ─── TOC ──────────────────────────────────────────────────────────────────────
 class TOC:
     def __init__(self, toc_path: str, hashdb_path: Optional[str] = None):
         self.toc_path = toc_path
@@ -409,23 +409,12 @@ class TOC:
         for _ in range(n):
             h,o,s = struct.unpack('<III',d[pos:pos+12])
             self.sections.append(Section(h,o,s)); pos += 12
-
-        # Section indices vary by platform:
-        # SM Remaster (6 sections): [0]=Archives [1]=IDs [2]=Sizes [3]=Keys [4]=Offsets [5]=Spans
-        # MM PS5 (7 sections):      [0]=Archives [1]=IDs [2]=Sizes [3]=Keys [4]=Extra [5]=Offsets [6]=Spans
-        self._sec_archives = 0
-        self._sec_ids = 1
-        self._sec_sizes = 2
-        self._sec_keys = 3
-        self._sec_offsets = 5 if n == 7 else 4
-        self._sec_spans = 6 if n == 7 else 5
-
-        self._parse_archives(self.sections[self._sec_archives])
-        self._parse_ids(self.sections[self._sec_ids])
-        self._parse_sizes(self.sections[self._sec_sizes])
-        self._parse_keys(self.sections[self._sec_keys])
-        self._parse_offsets(self.sections[self._sec_offsets])
-        self._parse_spans(self.sections[self._sec_spans])
+        self._parse_archives(self.sections[0])
+        self._parse_ids(self.sections[1])
+        self._parse_sizes(self.sections[2])
+        self._parse_keys(self.sections[3])
+        self._parse_offsets(self.sections[4])
+        self._parse_spans(self.sections[5])
         self._build()
 
     def _parse_archives(self, sec):
@@ -471,7 +460,7 @@ class TOC:
             b = o+i*8; self.spans_entries.append(struct.unpack('<II',d[b:b+8]))
 
     def _build(self) -> None:
-        oe_base = self.sections[self._sec_offsets].offset; se_base = self.sections[self._sec_sizes].offset
+        oe_base = self.sections[4].offset; se_base = self.sections[2].offset
         for i,(aid,se) in enumerate(zip(self.asset_ids, self.size_entries)):
             _,fsize,fctr = se
             arch_idx,arch_off = self.offset_entries[fctr]
@@ -539,8 +528,8 @@ class TOC:
         entry = struct.pack('<II', 0, 0) + name_bytes
         entry = entry.ljust(ARCH_STRIDE, b'\x00')  # pad to 24 bytes
 
-        # Find ArchiveFiles section and insert at its end
-        sec0 = self.sections[self._sec_archives]
+        # Find Section 0 (ArchiveFiles) and insert at its end
+        sec0 = self.sections[0]
         insert_pos = sec0.offset + sec0.size
 
         buf = bytearray(self.dec_data)
@@ -585,7 +574,7 @@ class TOC:
         print(f'TOC saved: {out} ({os.path.getsize(out):,} bytes)')
 
 
-# --- DAG hash builder ---------------------------------------------------------
+# ─── DAG hash builder ─────────────────────────────────────────────────────────
 def build_hash_db_from_dag(dag_path: str, output_path: Optional[str] = None,
                             verbose: bool = True) -> dict[int,str]:
     with open(dag_path,'rb') as f: raw = f.read()
@@ -611,35 +600,22 @@ def build_hash_db_from_dag(dag_path: str, output_path: Optional[str] = None,
     return db
 
 
-# --- Archive Reader -----------------------------------------------------------
+# ─── Archive Reader ───────────────────────────────────────────────────────────
 class ArchiveReader:
     def __init__(self, archive_dir: str): self.archive_dir = archive_dir
-
-    def _find_archive(self, name: str) -> str:
-        """Find archive file, trying alternative paths for PS5/PC path-based names."""
-        path = os.path.join(self.archive_dir, name)
-        if os.path.exists(path):
-            return path
-        # PS5/PC: archives stored as d\xxx but may be flat in archive_dir
-        # Try stripping leading d\ or just the basename
-        if '\\' in name or '/' in name:
-            flat = os.path.join(self.archive_dir, os.path.basename(name))
-            if os.path.exists(flat):
-                return flat
-        raise FileNotFoundError(f'Not found: {path}')
-
     def read_asset(self, asset: AssetEntry) -> bytes:
-        path = self._find_archive(asset.archive_name)
+        path = os.path.join(self.archive_dir, asset.archive_name)
+        if not os.path.exists(path): raise FileNotFoundError(f'Not found: {path}')
         with open(path,'rb') as f:
             f.seek(asset.archive_offset); data = f.read(asset.file_size)
         if len(data) != asset.file_size: raise IOError(f'Short read: {len(data)}/{asset.file_size}')
         return data
 
 
-# --- Mod Manager -------------------------------------------------------------
+# ─── Mod Manager ─────────────────────────────────────────────────────────────
 
 
-# --- Localization -------------------------------------------------------------
+# ─── Localization ─────────────────────────────────────────────────────────────
 # Section IDs from team-waldo/InsomniacArchive LocalizationFile.cs
 _LOC_KEY_DATA   = 0x4D73CEBD
 _LOC_KEY_OFF    = 0xA4EA55B2
@@ -658,14 +634,13 @@ def _loc_decompress(path: str) -> bytes:
 
     Format A (0x122BB0AB): LZ4-compressed DAT1 with 0x24-byte header.
     Format B (0xBA20AFB5): asset wrapper (0x24-byte header) + raw DAT1, not compressed.
-    PS5/PC: Format A header but data is often raw DAT1 (not actually compressed).
     """
     with open(path, 'rb') as f:
         raw = f.read()
     magic = _loc_detect_format(raw)
 
     if magic == _LOC_MAGIC_LZ4:
-        # Format A — normally LZ4 compressed
+        # Format A — LZ4 compressed
         try:
             import lz4.block
         except ImportError:
@@ -674,11 +649,7 @@ def _loc_decompress(path: str) -> bytes:
         compressed = raw[0x24:]
         if len(compressed) == rawsize:
             return compressed  # edge-case: stored uncompressed inside LZ4 header
-        try:
-            return lz4.block.decompress(compressed, uncompressed_size=rawsize)
-        except Exception:
-            # PS5/PC: LZ4 header but data is raw uncompressed DAT1
-            return compressed
+        return lz4.block.decompress(compressed, uncompressed_size=rawsize)
 
     elif magic == _LOC_MAGIC_WRAPPER:
         # Format B — wrapper header only, data is already raw DAT1
@@ -698,10 +669,14 @@ def _loc_compress(dec: bytes, magic: int) -> bytes:
         header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
         return header + dec
     else:
-        # PS5/PC: always write raw uncompressed DAT1 (game expects raw)
-        # The LZ4 header is just a container — game loader reads raw inside
+        # Format A (and default): LZ4 compress
+        try:
+            import lz4.block
+        except ImportError:
+            print('ERROR: lz4 not installed. Run: pip install lz4'); sys.exit(1)
+        compressed = lz4.block.compress(dec, store_size=False)
         header = struct.pack('<I', magic) + struct.pack('<I', len(dec)) + b'\x00' * 28
-        return header + dec
+        return header + compressed
 
 def _loc_parse_sections(dec: bytes) -> dict:
     """Parse DAT1 sections, return {hash: (offset, size)}."""
@@ -892,16 +867,13 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
     new_td = bytes(new_tr_data)
 
     # Rebuild: everything before tr_data + new tr_data + everything after old tr_data
-    # PS5/PC: there may be extra sections AFTER TR_DATA (9 sections total vs PS4's 4)
-    # Find sections that come after TR_DATA and preserve them
+    # Since tr_data is the LAST section (highest offset), we can just truncate and append
+    # But sections aren't guaranteed to be in order, so we do it carefully
+    # Find which section is at the end of the file
     all_secs = sorted(sec.items(), key=lambda x: x[1][0])
-
-    # Build list of sections after TR_DATA (by offset)
-    tr_data_idx = next(i for i, (h, _) in enumerate(all_secs) if h == _LOC_TR_DATA)
-    tail_secs = all_secs[tr_data_idx + 1:]  # sections after TR_DATA
-
-    if not tail_secs:
-        # TR_DATA is last section — simple truncate
+    
+    # TranslationData (0x70A382B8) is last section by offset — just replace in place
+    if all_secs[-1][0] == _LOC_TR_DATA:
         new_dec = bytes(buf[:td_off]) + new_td
         # Update section size in DAT1 header
         nsec = struct.unpack('<I', new_dec[12:16])[0]
@@ -914,26 +886,9 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
             pos += 12
         new_dec = bytes(new_dec_buf)
     else:
-        # TR_DATA is NOT last — preserve tail sections (PS5/PC)
-        old_td_end = td_off + td_sz
-        tail_start = tail_secs[0][1][0]  # offset of first section after TR_DATA
-        tail_data = dec[tail_start:]  # everything after TR_DATA (includes all tail sections)
-
-        new_dec = bytes(buf[:td_off]) + new_td + tail_data
-
-        # Update section offsets in DAT1 header for the size change
-        td_size_delta = len(new_td) - td_sz
-        nsec = struct.unpack('<I', new_dec[12:16])[0]
-        pos = 16
-        new_dec_buf = bytearray(new_dec)
-        for _ in range(nsec):
-            h = struct.unpack('<I', new_dec_buf[pos:pos+4])[0]
-            if h == _LOC_TR_DATA:
-                struct.pack_into('<I', new_dec_buf, pos+8, len(new_td))
-            elif h in [th for th, _ in tail_secs]:
-                _, (off, sz) = sec[h]
-                struct.pack_into('<I', new_dec_buf, pos+4, off + td_size_delta)
-            pos += 12
+        # Fallback: just patch in place (may leave garbage but size stays same)
+        new_dec_buf = bytearray(buf)
+        new_dec_buf[td_off:td_off+len(new_td)] = new_td
         new_dec = bytes(new_dec_buf)
 
     # Compress and save
@@ -942,11 +897,11 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
         f.write(out_data)
 
     print(f'Imported {imported:,} translations, saved to {out_path}')
-    print(f'  Original: {len(raw):,} bytes -> New: {len(out_data):,} bytes')
+    print(f'  Original: {len(raw):,} bytes → New: {len(out_data):,} bytes')
     return imported
 
 
-# --- CLI ----------------------------------------------------------------------
+# ─── CLI ──────────────────────────────────────────────────────────────────────
 
 def repack_archive(toc: TOC, archive_name: str, archive_dir: str,
                    output_archive: str, output_toc: str,
@@ -991,7 +946,7 @@ def repack_archive(toc: TOC, archive_name: str, archive_dir: str,
                 ok += 1
             except Exception as e:
                 if verbose:
-                    print(f'  [FAIL] {a.filename}: {e}')
+                    print(f'  ✗ {a.filename}: {e}')
                 err += 1
 
     archive_size = os.path.getsize(output_archive)
@@ -1113,7 +1068,7 @@ def cmd_repack_dir(args):
                 toc.patch_redirect(a, orig_idx, new_off, len(data))
                 ok += 1
             except Exception as e:
-                print(f'  [FAIL] {a.filename}: {e}')
+                print(f'  ✗ {a.filename}: {e}')
                 err += 1
 
     archive_size = os.path.getsize(out_archive)
@@ -1128,13 +1083,10 @@ def cmd_repack_dir(args):
 def _auto_toc(args) -> TOC:
     hashdb = getattr(args,'hashdb',None)
     if not hashdb or not os.path.exists(hashdb):
-        for c in ['PS5AssetHashes.txt',
-                  'MilesAssetHashes.txt',
-                  'PS4AssetHashes.txt',
-                  os.path.join(os.path.dirname(__file__),'PS5AssetHashes.txt'),
+        for c in ['MilesAssetHashes.txt',
                   os.path.join(os.path.dirname(__file__),'MilesAssetHashes.txt'),
-                  os.path.join(os.path.dirname(__file__),'PS4AssetHashes.txt'),
-                  'AssetHashes.txt']:
+                  'AssetHashes.txt',
+                  'PS4AssetHashes.txt']:
             if os.path.exists(c): hashdb = c; break
     toc = TOC(args.toc, hashdb)
     toc.load()
@@ -1154,7 +1106,7 @@ def cmd_info(args):
     print(f'  Named assets: {named:,} ({100*named//total}%)')
     print(f'  Hash DB     : {len(toc.hash_db):,} entries')
     print(f'\n  {"#":<5} {"Archive":<18} {"Assets":>8}')
-    print(f'  {"-"*5} {"-"*18} {"-"*8}')
+    print(f'  {"─"*5} {"─"*18} {"─"*8}')
     for arc in toc.archive_files:
         n = sum(1 for a in toc.assets if a.archive_index == arc.index)
         if n: print(f'  [{arc.index:3d}] {arc.filename:<18} {n:8,}')
@@ -1167,7 +1119,7 @@ def cmd_list(args):
     if getattr(args,'named_only',False): assets = [a for a in assets if not a.filename.startswith('0x')]
     limit = getattr(args,'limit',50)
     print(f'\n  {"Asset Path":<80} {"Archive":<14} {"Offset":>12} {"Size":>10}')
-    print(f'  {"-"*80} {"-"*14} {"-"*12} {"-"*10}')
+    print(f'  {"─"*80} {"─"*14} {"─"*12} {"─"*10}')
     for a in assets[:limit]:
         print(f'  {a.filename:<80} {a.archive_name:<14} 0x{a.archive_offset:08X} {a.file_size:10,}')
     if len(assets)>limit: print(f'\n  ... {len(assets)-limit:,} more')
@@ -1200,10 +1152,10 @@ def cmd_extract(args):
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path,'wb') as f: f.write(data)
             disp = a.filename + lang
-            print(f'  [OK] {disp}  ({len(data):,} B)')
+            print(f'  ✓ {disp}  ({len(data):,} B)')
             ok += 1
         except Exception as e:
-            print(f'  [FAIL] {a.filename}: {e}'); err += 1
+            print(f'  ✗ {a.filename}: {e}'); err += 1
     print(f'\n  Extracted: {ok}  Errors: {err}' +
           (f'  Skipped (hex): {skipped}' if skipped else ''))
 
@@ -1258,6 +1210,7 @@ def cmd_patch(args):
     """
     toc = _auto_toc(args)
     archive_dir = args.archive_dir
+    mod_name = args.mod_name
     out_toc = getattr(args, 'output_toc', None) or 'toc.new'
     backup = not getattr(args, 'no_backup', False)
     reader = ArchiveReader(archive_dir)
@@ -1283,23 +1236,23 @@ def cmd_patch(args):
         if not os.path.exists(file_path):
             print(f'  ERROR: file not found: {file_path}'); return
 
-        idx = getattr(args, 'asset_index', 0)
-        asset = _resolve_asset(toc, asset_ref, reader, index=idx)
+        asset = _resolve_asset(toc, asset_ref, reader)
         if not asset:
-            print(f'  ERROR: asset not found: {asset_ref} (index {idx})'); return
+            print(f'  ERROR: asset not found: {asset_ref}'); return
         pairs.append((asset, file_path))
 
     if not pairs:
         print('No files to patch.'); return
 
-    # --all-lang: expand each localization asset to all language duplicates
+    # --all-lang: expand each localization asset to all 32 language duplicates
     if getattr(args, 'all_lang', False):
         expanded = []
         for asset, file_path in pairs:
-            # PS5/PC: match all assets with same hash (may span multiple archives)
-            dupes = [a for a in toc.assets if a.asset_id == asset.asset_id]
+            # find all duplicates of this asset (same filename + same archive)
+            dupes = [a for a in toc.assets
+                     if a.filename == asset.filename and a.archive_name == asset.archive_name]
             if len(dupes) > 1:
-                print(f'  --all-lang: expanding {asset.filename!r} -> {len(dupes)} slots')
+                print(f'  --all-lang: expanding {asset.filename!r} → {len(dupes)} slots')
                 for d in dupes:
                     expanded.append((d, file_path))
             else:
@@ -1312,7 +1265,7 @@ def cmd_patch(args):
         with open(file_path, 'rb') as f:
             header = f.read(4)
         if len(header) >= 4 and struct.unpack('<I', header)[0] == 0xBA20AFB5:
-            print(f'  -> {os.path.basename(file_path)}: asset wrapper detected, stripping 0x28 header automatically')
+            print(f'  → {os.path.basename(file_path)}: asset wrapper detected, stripping 0x28 header automatically')
             import tempfile
             raw = open(file_path, 'rb').read()
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.stripped')
@@ -1323,50 +1276,31 @@ def cmd_patch(args):
             stripped_pairs.append((asset, file_path))
     pairs = stripped_pairs
 
-    # PS5/PC: append to existing archive instead of creating new one
-    # (game rejects new archive entries — must reuse existing archive)
-    target_arch = getattr(args, 'target_archive', None)
-    if target_arch:
-        arch_matches = [a for a in toc.archive_files if target_arch in a.filename]
-        if arch_matches:
-            target_idx = arch_matches[0].index
-        else:
-            print(f'  ERROR: target archive not found: {target_arch}'); return
-    else:
-        # Default: use d\userinterface (index 130 for PS5 Remaster)
-        target_idx = 130
+    # Register mod archive in TOC ArchiveFiles section
+    new_idx = toc.add_archive(mod_name)
 
-    target_name = toc.archive_files[target_idx].filename if target_idx < len(toc.archive_files) else f'archive_{target_idx}'
-    mod_path = os.path.join(archive_dir, target_name)
-    # _find_archive handles d\ path resolution
-    actual_path = ArchiveReader(archive_dir)._find_archive(target_name)
+    # Write mod archive
+    mod_path = os.path.join(archive_dir, mod_name)
+    os.makedirs(os.path.dirname(mod_path) if os.path.dirname(mod_path) else '.', exist_ok=True)
 
-    print(f'\n=== Patch: {len(pairs)} asset(s) -> [{target_idx}] {target_name} ===')
+    print(f'\n=== Patch: {len(pairs)} asset(s) → {mod_name} (archive index {new_idx}) ===')
 
-    # Append to existing archive
-    file_offsets = {}
-    with open(actual_path, 'ab') as out:
+    with open(mod_path, 'wb') as out:
         for asset, file_path in pairs:
-            if file_path in file_offsets:
-                new_off, data_len = file_offsets[file_path]
-                toc.patch_redirect(asset, target_idx, new_off, data_len)
-                print(f'  [OK] {asset.filename} <- {os.path.basename(file_path)} ({data_len:,} B) [shared]')
-            else:
-                data = open(file_path, 'rb').read()
-                new_off = out.tell()
-                out.write(data)
-                file_offsets[file_path] = (new_off, len(data))
-                toc.patch_redirect(asset, target_idx, new_off, len(data))
-                print(f'  [OK] {asset.filename} <- {os.path.basename(file_path)} ({len(data):,} B)')
+            data = open(file_path, 'rb').read()
+            new_off = out.tell()
+            out.write(data)
+            toc.patch_redirect(asset, new_idx, new_off, len(data))
+            print(f'  ✓ {asset.filename} ← {os.path.basename(file_path)} ({len(data):,} B)')
 
-    archive_size = os.path.getsize(actual_path)
-    print(f'  Archive: {actual_path} ({archive_size:,} bytes)')
+    mod_size = os.path.getsize(mod_path)
+    print(f'  Archive: {mod_path} ({mod_size:,} bytes)')
 
     toc.save(out_toc)
     print(f'  Done. Replace your toc with {out_toc}')
 
 
-def _resolve_asset(toc, ref, reader, index=0):
+def _resolve_asset(toc, ref, reader):
     """Resolve an asset reference to a specific TOC entry.
 
     Handles:
@@ -1374,17 +1308,10 @@ def _resolve_asset(toc, ref, reader, index=0):
     - Exact name: 'localization\\localization_all.localization'
     - Extracted flat name: 'localization_localization_all.localization'
     - Name with lang suffix: 'localization_localization_all.localization.en-US'
-
-    index: when multiple assets match, return the Nth one (0=first)
     """
-    # 1. Direct hex ID — get Nth matching asset
+    # 1. Direct hex ID
     if ref.startswith(('0x', '0X')):
-        matches = [a for a in toc.assets if a.asset_id == int(ref, 16)]
-        if index < len(matches):
-            return matches[index]
-        if matches:
-            return matches[0]  # fallback: index out of range, use first
-        return None
+        return toc.get_by_id(int(ref, 16))
 
     # 2. Check for language suffix
     base_ref = _strip_lang_suffix(ref)
@@ -1511,12 +1438,12 @@ def _match_lang_duplicate(toc, filename, archive_name, lang_suffix, reader):
 
 def main():
     import argparse
-    p = argparse.ArgumentParser(prog='smps5tool', description='Spider-Man PS5/PC Remaster Asset Tool')
+    p = argparse.ArgumentParser(prog='mm', description='Miles Morales PS4 Asset Tool')
     p.add_argument('--toc',    default='toc')
-    p.add_argument('--hashdb', default='PS5AssetHashes.txt')
+    p.add_argument('--hashdb', default='PS4AssetHashes.txt')
     sub = p.add_subparsers(dest='cmd')
 
-    s = sub.add_parser('build-hashdb', help='Build PS4AssetHashes.txt from dag  <- run this first!')
+    s = sub.add_parser('build-hashdb', help='Build PS4AssetHashes.txt from dag  ← run this first!')
     s.add_argument('--dag',    default='dag')
     s.add_argument('--output', default='PS4AssetHashes.txt')
 
@@ -1570,18 +1497,15 @@ def main():
     s.add_argument('csv', help='Translated CSV file path')
     s.add_argument('output', help='Output localization file path')
 
-    s = sub.add_parser('patch', help='Patch assets into existing archive + update TOC')
+    s = sub.add_parser('patch', help='Patch specific assets → small mod archive + new TOC')
     s.add_argument('--archive-dir', required=True, help='Game archive directory')
-    s.add_argument('--target-archive', default='d\\userinterface',
-                   help='Existing archive to append to (default: d\\userinterface)')
+    s.add_argument('--mod-name', required=True, help='Name for the mod archive file')
     s.add_argument('--files', nargs='+', required=True,
                    help='asset=file pairs (e.g. "0xBE55D94F171BF8DE=modified.localization")')
     s.add_argument('--output-toc', default='toc.new', help='Output TOC path')
     s.add_argument('--no-backup', action='store_true', help='Skip TOC backup')
     s.add_argument('--all-lang', action='store_true',
-                   help='For localization assets: patch ALL language slots (matched by asset ID) with the same file')
-    s.add_argument('--asset-index', type=int, default=0,
-                   help='When multiple assets match, use the Nth one (0=first, 1=second, etc.)')
+                   help='For localization assets: patch ALL 32 language slots with the same file')
 
     args = p.parse_args()
     cmds = {
