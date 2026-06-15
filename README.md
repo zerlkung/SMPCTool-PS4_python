@@ -365,7 +365,7 @@ Each game has multiple language slots sharing the same hash. The **active slot**
 | Game | Active Slot | `--asset-index` | Note |
 |---|---|---|---|
 | **SM Remaster PS5** | 1 | `--asset-index 1` | Slot 0 & 2 = English, game reads slot 1 |
-| **MM PS5** | 0 | `--asset-index 0` | Slot 0 = "ABANDON MISSION", game reads first |
+| **MM PS5** | 2 | `--asset-index 2` | Slot 0 & 1 = English, game reads slot 2 |
 | **MM PS4** | — | (use `--all-lang`) | 32 copies, patch all |
 | **SM1 PS4** | — | (use `--all-lang`) | 32 copies, patch all |
 
@@ -564,7 +564,7 @@ copy toc.new toc
 | เกม | Active Slot | `--asset-index` | หมายเหตุ |
 |---|---|---|---|
 | **SM Remaster PS5** | 1 | `--asset-index 1` | Slot 0,2 = อังกฤษ เกมอ่าน slot 1 |
-| **MM PS5** | 0 | `--asset-index 0` | Slot 0 = "ABANDON MISSION" |
+| **MM PS5** | 2 | `--asset-index 2` | Slot 0,1 = อังกฤษ เกมอ่าน slot 2 |
 | **MM PS4** | — | (ใช้ `--all-lang`) | 32 copies |
 | **SM1 PS4** | — | (ใช้ `--all-lang`) | 32 copies |
 
