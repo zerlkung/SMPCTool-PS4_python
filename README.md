@@ -14,10 +14,12 @@ Single-file per platform, pure Python 3. Works as a CLI tool and a Python librar
 |---|---|---|---|
 | `sm1.py` | SM1 PS4 (CUSA11993) | 24 | 54,010 |
 | `mm.py` | Miles Morales PS4 | 72 | 34,079 |
-| **`smr.py`** | **SM Remaster PS5/PC** | **72** | **56,417** |
-| **`smr.py`** | **Miles Morales PS5/PC** | **72** | **34,076 / 35,128** |
+| `smr.py` | SM Remaster + MM PS5/PC | 72 | 56,417 / 34,076 |
+| `sm2.py` | **Spider-Man 2 PS5/PC** 🚧 | 66 | **92,760** |
 
-> **Note:** `smr.py` works for BOTH Spider-Man Remastered AND Miles Morales on PS5/PC. The TOC format is identical (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections (1 extra vs SM Remaster's 6) — handled automatically.
+> **Note:** `smr.py` works for BOTH Spider-Man Remastered AND Miles Morales on PS5/PC. MM PS5 has 7 DAT1 sections — handled automatically.
+>
+> 🚧 **Spider-Man 2** is WIP — see [SM2_README.md](SM2_README.md) for details.
 
 ---
 
