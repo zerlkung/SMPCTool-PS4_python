@@ -24,7 +24,7 @@ Single-file per platform, pure Python 3. Works as a CLI tool and a Python librar
 ## ⚠️ Work In Progress
 
 | Feature | SM1 PS4 | MM PS4 | SM PS5/PC | MM PS5/PC |
-|---|---|---|---|---|---|
+|---|---|---|---|---|
 | Extract / repack / patch | ✅ | ✅ | ✅ | ✅ |
 | Font replacement (`0xB1BC4746124FA7ED`) | ✅ | ✅ | ✅ | ✅ |
 | Localization export (`loc-export`) | ✅ | ✅ | ✅ | ✅ |
