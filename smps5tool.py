@@ -409,12 +409,23 @@ class TOC:
         for _ in range(n):
             h,o,s = struct.unpack('<III',d[pos:pos+12])
             self.sections.append(Section(h,o,s)); pos += 12
-        self._parse_archives(self.sections[0])
-        self._parse_ids(self.sections[1])
-        self._parse_sizes(self.sections[2])
-        self._parse_keys(self.sections[3])
-        self._parse_offsets(self.sections[4])
-        self._parse_spans(self.sections[5])
+
+        # Section indices vary by platform:
+        # SM Remaster (6 sections): [0]=Archives [1]=IDs [2]=Sizes [3]=Keys [4]=Offsets [5]=Spans
+        # MM PS5 (7 sections):      [0]=Archives [1]=IDs [2]=Sizes [3]=Keys [4]=Extra [5]=Offsets [6]=Spans
+        self._sec_archives = 0
+        self._sec_ids = 1
+        self._sec_sizes = 2
+        self._sec_keys = 3
+        self._sec_offsets = 5 if n == 7 else 4
+        self._sec_spans = 6 if n == 7 else 5
+
+        self._parse_archives(self.sections[self._sec_archives])
+        self._parse_ids(self.sections[self._sec_ids])
+        self._parse_sizes(self.sections[self._sec_sizes])
+        self._parse_keys(self.sections[self._sec_keys])
+        self._parse_offsets(self.sections[self._sec_offsets])
+        self._parse_spans(self.sections[self._sec_spans])
         self._build()
 
     def _parse_archives(self, sec):
@@ -460,7 +471,7 @@ class TOC:
             b = o+i*8; self.spans_entries.append(struct.unpack('<II',d[b:b+8]))
 
     def _build(self) -> None:
-        oe_base = self.sections[4].offset; se_base = self.sections[2].offset
+        oe_base = self.sections[self._sec_offsets].offset; se_base = self.sections[self._sec_sizes].offset
         for i,(aid,se) in enumerate(zip(self.asset_ids, self.size_entries)):
             _,fsize,fctr = se
             arch_idx,arch_off = self.offset_entries[fctr]
@@ -528,8 +539,8 @@ class TOC:
         entry = struct.pack('<II', 0, 0) + name_bytes
         entry = entry.ljust(ARCH_STRIDE, b'\x00')  # pad to 24 bytes
 
-        # Find Section 0 (ArchiveFiles) and insert at its end
-        sec0 = self.sections[0]
+        # Find ArchiveFiles section and insert at its end
+        sec0 = self.sections[self._sec_archives]
         insert_pos = sec0.offset + sec0.size
 
         buf = bytearray(self.dec_data)

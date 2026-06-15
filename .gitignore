@@ -33,6 +33,10 @@ toc.rt
 toc.raw
 # PC game files
 PC_Files/
+# MM PS5/PC
+MM_PS5/
+MM_PC/
+MM_PS5 - Backup Files/
 # Temp/debug files
 _*.txt
 # Reference binary

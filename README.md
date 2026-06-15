@@ -15,22 +15,26 @@ Single-file per platform, pure Python 3. Works as a CLI tool and a Python librar
 | `smps4tool.py` | SM1 PS4 (CUSA11993) | 24 | 54,010 |
 | `smps4tool_mm.py` | Miles Morales PS4 | 72 | 34,079 |
 | **`smps5tool.py`** | **SM Remaster PS5/PC** | **72** | **56,417** |
+| **`smps5tool.py`** | **Miles Morales PS5/PC** | **72** | **34,076 / 35,128** |
+
+> **Note:** `smps5tool.py` works for BOTH Spider-Man Remastered AND Miles Morales on PS5/PC. The TOC format is identical (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections (1 extra vs SM Remaster's 6) — handled automatically.
 
 ---
 
 ## ⚠️ Work In Progress
 
-| Feature | SM1 PS4 | MM PS4 | PS5/PC |
-|---|---|---|---|
-| Extract / repack / patch | ✅ | ✅ | ✅ |
-| Font replacement (`0xB1BC4746124FA7ED`) | ✅ | ✅ | ✅ |
-| Localization export (`loc-export`) | ✅ | ✅ | ✅ |
-| Localization import (`loc-import`) | ✅ | ✅ | ✅ |
-| `--all-lang` (patch all language slots) | ✅ 32 slots | ✅ 32 slots | — single file |
-| CP874 / Thai encoding support | ✅ | ✅ | — |
-| Format B (wrapper + raw DAT1) | ✅ | ✅ | — |
-| Raw DAT1 (PS5 loc format) | — | — | ✅ |
-| 9-section loc preservation | — | — | ✅ |
+| Feature | SM1 PS4 | MM PS4 | SM PS5/PC | MM PS5/PC |
+|---|---|---|---|---|---|
+| Extract / repack / patch | ✅ | ✅ | ✅ | ✅ |
+| Font replacement (`0xB1BC4746124FA7ED`) | ✅ | ✅ | ✅ | ✅ |
+| Localization export (`loc-export`) | ✅ | ✅ | ✅ | ✅ |
+| Localization import (`loc-import`) | ✅ | ✅ | ✅ | ✅ |
+| `--all-lang` (patch all language slots) | ✅ 32 slots | ✅ 32 slots | — | — |
+| CP874 / Thai encoding support | ✅ | ✅ | — | — |
+| Format B (wrapper + raw DAT1) | ✅ | ✅ | — | — |
+| Raw DAT1 (PS5 loc format) | — | — | ✅ | ✅ |
+| Multi-section loc preservation | — | — | 9 sections | 9 sections |
+| `--asset-index` slot selection | — | — | ✅ 31 slots | ✅ 30 slots |
 
 ---
 
@@ -302,22 +306,21 @@ python smps4tool_mm.py patch --archive-dir asset_archive --mod-name <mod-name> -
 
 ## PS5 / PC Remaster ✅
 
-`smps5tool.py` is the tool for **Marvel's Spider-Man Remastered (PS5/PC)**.
-Based on `smps4tool_mm.py` (ARCH_STRIDE=72) with PS5-specific localization support.
+`smps5tool.py` works for both **Spider-Man Remastered** AND **Miles Morales** on PS5/PC. Both use the same TOC format (ARCH_STRIDE=72, path-based archives). MM PS5 has 7 DAT1 sections vs 6 for SM Remaster — handled automatically.
 
-| | SM1 PS4 | PS5/PC Remaster |
-|---|---|---|
-| Tool | `smps4tool.py` | `smps5tool.py` |
-| ARCH_STRIDE | 24 | 72 |
-| Archives | 118 flat-named | 174 path-based (`d\xxx`) |
-| Assets | 657,831 | 814,061 |
-| Hash DB | `PS4AssetHashes.txt` | `PS5AssetHashes.txt` |
-| Loc hash | `0xBE55D94F171BF8DE` | `0xBE55D94F171BF8DE` (same) |
-| Loc sections | 4 (LZ4 compressed) | 9 (raw DAT1, LZ4 header) |
-| Strings per lang | 54,010 | 56,417 |
-| Font hash | `0xB1BC4746124FA7ED` | `0xB1BC4746124FA7ED` (same) |
-| Font archive | `p000026` | `d\userinterface` |
-| Font size | 438 KB | 442 KB |
+| | SM1 PS4 | SM Remaster PS5/PC | MM PS5/PC |
+|---|---|---|---|
+| Tool | `smps4tool.py` | `smps5tool.py` | `smps5tool.py` |
+| ARCH_STRIDE | 24 | 72 | 72 |
+| Archives | 118 flat | 174 path (`d\xxx`) | 174 path (`d\xxx`) |
+| Assets | 657,831 | 814,061 | 583,237 |
+| TOC sections | 6 | 6 | 7 |
+| Loc hash | `0xBE55D94F171BF8DE` | same | same |
+| Loc sections | 4 (LZ4) | 9 (raw DAT1) | 9 (raw DAT1) |
+| Strings per lang | 54,010 | 56,417 | 34,076 |
+| Font hash | `0xB1BC4746124FA7ED` | same | same |
+| Font archive | `p000026` | `d\userinterface` | `d\userinterface` |
+| Font size | 438 KB | 442 KB | 273 KB |
 
 Key differences from PS4:
 - **Single loc file** per language (not 32 copies) — no `--all-lang` needed
