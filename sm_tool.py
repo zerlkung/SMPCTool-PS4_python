@@ -345,6 +345,11 @@ class SpiderToolGUI:
                                         selectcolor=t['panel'], activebackground=t['bg'])
         self.modded_cb.pack(side='left', padx=(12, 0))
 
+        # Help tooltip for modded checkbox
+        mod_help = tk.Label(settings, text='☑ Check if files were already modded (patch injected). Leave unchecked for original game files.',
+                           bg=t['bg'], fg=t['text_dim'], font=('Segoe UI', 7), wraplength=500)
+        mod_help.grid(row=3, column=0, columnspan=3, sticky='w', pady=(2, 0))
+
         # ─── Actions ───
         actions = tk.LabelFrame(right, text=" ACTIONS ", bg=t['bg'],
                                fg=t['red'], font=('Segoe UI', 11, 'bold'),
