@@ -1177,7 +1177,10 @@ def cmd_extract(args):
     toc = _auto_toc(args)
     reader = ArchiveReader(args.archive_dir)
     os.makedirs(args.output, exist_ok=True)
-    if   getattr(args,'id',None):      assets = [a for a in [toc.get_by_id(int(args.id,16))] if a]
+    if   getattr(args,'id',None):
+        # Get ALL matching assets by hex ID (not just first)
+        hid = int(args.id, 16)
+        assets = [a for a in toc.assets if a.asset_id == hid]
     elif getattr(args,'name',None):    a = toc.get_by_name(args.name); assets = [a] if a else toc.search(args.name)
     elif getattr(args,'archive',None): assets = toc.by_archive(args.archive)
     elif getattr(args,'search',None):  assets = toc.search(args.search)
