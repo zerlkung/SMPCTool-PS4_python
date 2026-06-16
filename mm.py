@@ -897,7 +897,7 @@ def loc_import(loc_path: str, csv_path: str, out_path: str) -> int:
         f.write(out_data)
 
     print(f'Imported {imported:,} translations, saved to {out_path}')
-    print(f'  Original: {len(raw):,} bytes → New: {len(out_data):,} bytes')
+    print(f'  Original: {len(raw):,} bytes -> New: {len(out_data):,} bytes')
     return imported
 
 
@@ -946,7 +946,7 @@ def repack_archive(toc: TOC, archive_name: str, archive_dir: str,
                 ok += 1
             except Exception as e:
                 if verbose:
-                    print(f'  ✗ {a.filename}: {e}')
+                    print(f'  [FAIL] {a.filename}: {e}')
                 err += 1
 
     archive_size = os.path.getsize(output_archive)
@@ -1068,7 +1068,7 @@ def cmd_repack_dir(args):
                 toc.patch_redirect(a, orig_idx, new_off, len(data))
                 ok += 1
             except Exception as e:
-                print(f'  ✗ {a.filename}: {e}')
+                print(f'  [FAIL] {a.filename}: {e}')
                 err += 1
 
     archive_size = os.path.getsize(out_archive)
@@ -1152,10 +1152,10 @@ def cmd_extract(args):
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path,'wb') as f: f.write(data)
             disp = a.filename + lang
-            print(f'  ✓ {disp}  ({len(data):,} B)')
+            print(f'  [OK] {disp}  ({len(data):,} B)')
             ok += 1
         except Exception as e:
-            print(f'  ✗ {a.filename}: {e}'); err += 1
+            print(f'  [FAIL] {a.filename}: {e}'); err += 1
     print(f'\n  Extracted: {ok}  Errors: {err}' +
           (f'  Skipped (hex): {skipped}' if skipped else ''))
 
@@ -1291,7 +1291,7 @@ def cmd_patch(args):
             new_off = out.tell()
             out.write(data)
             toc.patch_redirect(asset, new_idx, new_off, len(data))
-            print(f'  ✓ {asset.filename} ← {os.path.basename(file_path)} ({len(data):,} B)')
+            print(f'  [OK] {asset.filename} ← {os.path.basename(file_path)} ({len(data):,} B)')
 
     mod_size = os.path.getsize(mod_path)
     print(f'  Archive: {mod_path} ({mod_size:,} bytes)')
