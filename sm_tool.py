@@ -340,7 +340,7 @@ class SpiderToolGUI:
                                      font=('Segoe UI', 8))
         self.hashdb_label.pack(side='left')
 
-        self.modded_cb = tk.Checkbutton(opts, text='Modded (userinterface)', variable=self.is_modded,
+        self.modded_cb = tk.Checkbutton(opts, text='Modded (any archive)', variable=self.is_modded,
                                         bg=t['bg'], fg=t['text_dim'], font=('Segoe UI', 8),
                                         selectcolor=t['panel'], activebackground=t['bg'])
         self.modded_cb.pack(side='left', padx=(12, 0))
@@ -480,7 +480,7 @@ class SpiderToolGUI:
         g = GAMES[self.current_game.get()]
         out = self.filedialog.askdirectory(title='Output directory')
         if not out: return
-        argv = [
+        self._run_cmd([
             '--toc', self.toc_path.get(),
             '--hashdb', g['hashdb'],
             'extract',
@@ -488,11 +488,7 @@ class SpiderToolGUI:
             '--id', g['loc_hash'],
             '--output', out,
             '--flat',
-        ]
-        if self.is_modded.get():
-            argv.insert(argv.index('extract') + 1, '--archive')
-            argv.insert(argv.index('extract') + 2, 'd\\userinterface')
-        self._run_cmd(argv, f'Extract Loc ({g["name"]})')
+        ], f'Extract Loc ({g["name"]})')
 
     def _extract_font(self):
         if not self._ensure_paths(): return
