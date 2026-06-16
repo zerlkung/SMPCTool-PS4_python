@@ -18,11 +18,11 @@ python sm_tool.py --game smr info --toc toc        # CLI mode
 
 | ID | Game | Tool | Stride | Strings |
 |---|---|---|---|---|
-| `sm1` | SM - PS4 | `sm1.py` | 24 | 54,010 |
-| `mm` | MM - PS4 | `mm.py` | 72 | 34,079 |
-| `smr` | SMR - PS5/PC | `smr.py` | 72 | 56,417 |
-| `mm_ps5` | MM - PS5/PC | `smr.py` | 72 | 34,076 |
-| `sm2` | SM2 - PS5 🚧 | `sm2.py` | 66 | 92,760 |
+| `sm1` | Marvel's Spider-Man - PS4 | `sm1.py` | 24 | 54,010 |
+| `mm` | Marvel's Spider-Man: Miles Morales - PS4 | `mm.py` | 72 | 34,079 |
+| `smr` | Marvel's Spider-Man Remastered - PS5/PC | `smr.py` | 72 | 56,417 |
+| `mm_ps5` | Marvel's Spider-Man: Miles Morales - PS5/PC | `smr.py` | 72 | 34,076 |
+| `sm2` | Marvel's Spider-Man 2 - PS5 🚧 | `sm2.py` | 66 | 92,760 |
 
 ## GUI Usage
 
