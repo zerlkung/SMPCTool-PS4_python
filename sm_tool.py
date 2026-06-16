@@ -27,7 +27,7 @@ THEME = {
 # ─── Game Registry ──────────────────────────────────────────────────────────────
 GAMES = {
     'sm1': {
-        'name': "Marvel's Spider-Man - PS4",
+        'name': 'SM - PS4',
         'module': 'sm1',
         'hashdb': 'PS4AssetHashes.txt',
         'stride': 24,
@@ -38,7 +38,7 @@ GAMES = {
         'wip': False,
     },
     'mm': {
-        'name': "Marvel's Spider-Man: Miles Morales - PS4",
+        'name': 'MM - PS4',
         'module': 'mm',
         'hashdb': 'MilesAssetHashes.txt',
         'stride': 72,
@@ -49,7 +49,7 @@ GAMES = {
         'wip': False,
     },
     'smr': {
-        'name': "Marvel's Spider-Man Remastered - PS5/PC",
+        'name': 'SMR - PS5/PC',
         'module': 'smr',
         'hashdb': 'PS5AssetHashes.txt',
         'stride': 72,
@@ -60,7 +60,7 @@ GAMES = {
         'wip': False,
     },
     'mm_ps5': {
-        'name': "Marvel's Spider-Man: Miles Morales - PS5/PC",
+        'name': 'MM - PS5/PC',
         'module': 'smr',
         'hashdb': 'PS5AssetHashes.txt',
         'stride': 72,
@@ -71,7 +71,7 @@ GAMES = {
         'wip': False,
     },
     'sm2': {
-        'name': "Marvel's Spider-Man 2 - PS5",
+        'name': 'SM2 - PS5  🚧 WIP',
         'module': 'sm2',
         'hashdb': 'hashes.txt',
         'stride': 66,
@@ -271,23 +271,18 @@ class SpiderToolGUI:
         for gid in game_order:
             g = GAMES[gid]
             label = g['name']
-            if g['wip']:
-                label += '  🚧 WIP'
 
             frame = tk.Frame(game_frame, bg=t['panel'], height=30)
             frame.pack(fill='x', pady=2)
             frame.pack_propagate(False)
 
             rb = tk.Radiobutton(frame, text=label, variable=self.current_game, value=gid,
-                               bg=t['panel'], fg=t['text'], font=('Segoe UI', 10),
+                               bg=t['panel'], fg=t['orange'] if g['wip'] else t['text'],
+                               font=('Segoe UI', 10),
                                activebackground=t['panel_light'], activeforeground=t['red'],
                                selectcolor=t['panel'], command=self._on_game_change,
                                anchor='w', padx=8)
             rb.pack(fill='both', expand=True)
-
-            if g['wip']:
-                warn = tk.Label(frame, text='⚠', bg=t['panel'], fg=t['orange'], font=('Segoe UI', 10))
-                warn.pack(side='right', padx=5)
 
             self.game_radios[gid] = rb
 
@@ -580,7 +575,7 @@ class SpiderToolGUI:
             '--asset-index', slot,
             '--output-toc', self.toc_path.get() + '.new',
             '--no-backup',
-        ], f'Patch Loc+Font slot {slot} ({g["name"]}')"
+        ], f'Patch Loc+Font slot {slot} ({g["name"]})')
 
     def _toc_info(self):
         if not self._ensure_paths(): return
